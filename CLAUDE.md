@@ -40,9 +40,10 @@
 | `rules.controller.ts` | `/admin/rules*` CRUD + preview + apply; `MetaController` `/meta/cities|worker-types|zones` (public) |
 | `common/meta.ts` | Saudi city list + `canonicalCity()` ("riyad"/"الرياض" -> "Riyadh"), worker types, `riderFilter()` / `riderMatches()` |
 | `progress.service.ts` | Sync logic, quiz grading, completion check, auto-unblock (`autoUnblockIfDone`), views |
-| `admin-modules.controller.ts` | Module CRUD, video/PDF upload, quiz PUT, assign (by userIds/city; dueAt, dueInMinutes or deadlineDays) |
+| `admin-modules.controller.ts` | Module CRUD, video/PDF upload, quiz PUT, assign (one-off; userIds and/or city/workerType/zone via shared `riderFilter`; due = dueAt > dueInMinutes > deadlineDays > module deadlineDays > 7) |
 | `admin-riders.controller.ts` | Rider list/create/details/edit, block, unblock (with optional `newDueAt`), block logs, `POST /admin/jobs/deadline-check` |
 | `blocking.service.ts` | Deadline cron: `assigned` + past `dueAt` → `overdue` + block user + log |
+| `rooster.controller.ts` | `GET /admin/rooster/riders`: admin "Rooster" screen (POC stand-in for the dispatch integration). Riders with training counts + completion %, `dispatch` ON_HOLD/ALLOWED, overall summary; `training=incomplete` (default) / complete / all. Block/unblock and "View" reuse `/admin/riders/:id*` |
 | `dashboard.controller.ts` | summary, by-city (groupBy), by-module, trend, non-compliant, export.csv, per-module stats and rider list. Shared filters + one compliance definition |
 | `seed.ts` | 1 admin, 10 riders (+966500000001..10, Riyadh/Jeddah), "Food Safety Basics" module + 5-question ar/en/ur quiz, assigned to all riders (re-running backfills Urdu on an old seed) |
 
@@ -50,6 +51,7 @@
 - **IDs:** use MongoDB ObjectIds for every ID (DB, API, docs/Swagger examples, filenames). Never UUIDs.
 - **No double counting:** `progress_events` has a unique index on (userId, eventId), where `eventId` is a MongoDB ObjectId generated on the phone. A duplicate key (11000) means "already received". An event stored but never `applied` (e.g. the server crashed mid-way) gets re-applied.
 - **Completion:** done when every part the module has is done: video ≥ `videoCompletePercent` (default 90), PDF viewed, quiz passed. Empty modules never complete.
+- **Progress `percent`** (`buildProgressView`) is weighted: each required part is an equal share, the video share fills with videoPercent / videoCompletePercent, PDF/quiz count when viewed/passed. Capped at 99 until complete, so 100 always means complete. `partsDone`/`partsTotal` give the step view. Score percents: `lastScorePercent`, `bestScorePercent`, `quizPassMarkPercent` (progress), `scorePercent` (sync quizResults), `avgBestScorePercent` (admin module stats). Admin FE uses `percent` for its bar unchanged.
 - **No re-block after an admin unblock:** the cron only picks `status: 'assigned'`. An admin unblock leaves the row `overdue` unless `newDueAt` is given; in that case the row goes back to `assigned` with the new date.
 - **Assignment rules only ADD** assignments (upsert on userId+moduleId, `ruleId` stored). They never reset, move or remove rows; deleting a rule keeps its assignments. Rules run on create / switch-on / edit, on rider create, OTP registration, city/workerType/zone change, and in a 5-minute sweep.
 - **City** is stored canonical (English name from `SAUDI_CITIES`); unknown cities are kept as typed. A rider can set their city once (at OTP registration or `PATCH /users/me` while empty); after that only an admin changes it.

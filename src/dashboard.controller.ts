@@ -394,6 +394,8 @@ export class DashboardController {
             failed: (p.quizAttempted || 0) - (p.quizPassed || 0),
             totalAttempts: p.totalAttempts || 0,
             avgBestScore: p.avgBestScore != null ? Math.round(p.avgBestScore * 10) / 10 : null,
+            avgBestScorePercent:
+              p.avgBestScore != null && quiz.questions.length ? Math.round((p.avgBestScore / quiz.questions.length) * 1000) / 10 : null,
             passRate: pct(p.quizPassed || 0, p.quizAttempted || 0),
           }
         : null,

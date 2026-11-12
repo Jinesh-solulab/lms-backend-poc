@@ -24,13 +24,25 @@ export class ProgressService {
 
   /* ---------------- views ---------------- */
 
-  /** Pure function: what is required for this module and how far the rider is. */
+  /**
+   * Pure function: what is required for this module and how far the rider is.
+   * percent is weighted: each required part has an equal share; the video share fills as it is watched
+   * (videoPercent / videoCompletePercent), PDF and quiz count when viewed / passed.
+   * It only reaches 100 when every part is done, so 100% always means "complete".
+   */
   buildProgressView(module: any, quiz: any, p: any, a: any) {
     p = p || {};
     const required = { video: !!module?.video?.path, pdf: !!module?.pdf?.path, quiz: !!quiz?.questions?.length };
     const done = { video: !!p.videoCompleted, pdf: !!p.pdfViewed, quiz: !!p.quizPassed };
     const steps = (['video', 'pdf', 'quiz'] as const).filter((k) => required[k]);
     const doneSteps = steps.filter((k) => done[k]).length;
+    const videoTarget = module?.videoCompletePercent || 90;
+    const share = (k: 'video' | 'pdf' | 'quiz') =>
+      done[k] ? 1 : k === 'video' ? Math.min((p.videoPercent || 0) / videoTarget, 1) : 0;
+    let percent = steps.length ? Math.round((steps.reduce((s, k) => s + share(k), 0) / steps.length) * 100) : 0;
+    if (doneSteps < steps.length) percent = Math.min(percent, 99);
+    const quizTotal = quiz?.questions?.length ?? 0;
+    const asPct = (score: any) => (score != null && quizTotal ? Math.round((score / quizTotal) * 100) : null);
     return {
       moduleId: String(module?._id || a?.moduleId),
       required,
@@ -40,10 +52,15 @@ export class ProgressService {
       quizAttempts: p.quizAttempts ?? 0,
       lastScore: p.lastScore ?? null,
       bestScore: p.bestScore ?? null,
-      quizTotal: quiz?.questions?.length ?? 0,
+      lastScorePercent: asPct(p.lastScore),
+      bestScorePercent: asPct(p.bestScore),
+      quizTotal,
       quizPassMark: quiz?.passMark ?? null,
+      quizPassMarkPercent: asPct(quiz?.passMark),
       quizPassed: done.quiz,
-      percent: steps.length ? Math.round((doneSteps / steps.length) * 100) : 0,
+      percent,
+      partsDone: doneSteps,
+      partsTotal: steps.length,
       completed: !!p.completed,
       completedAt: p.completedAt || null,
       assignmentStatus: a?.status || null,
@@ -57,6 +74,7 @@ export class ProgressService {
       moduleId: String(attempt.moduleId),
       score: attempt.score,
       total: attempt.total,
+      scorePercent: attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0,
       passMark: attempt.passMark,
       passed: attempt.passed,
       attemptedAt: attempt.attemptedAt,

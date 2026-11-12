@@ -258,7 +258,12 @@ export class AssignModuleDto {
   @IsIn(WORKER_TYPES)
   workerType?: WorkerType;
 
-  @ApiPropertyOptional({ example: '2026-11-20T18:00:00.000Z', description: 'Exact due date (overrides deadlineDays)' })
+  @ApiPropertyOptional({ example: 'North', description: 'Assign to all riders in this zone (case-insensitive)' })
+  @IsOptional()
+  @IsString()
+  zone?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-20T18:00:00.000Z', description: 'Exact due date (overrides everything else)' })
   @IsOptional()
   @IsDateString()
   dueAt?: string;
@@ -268,6 +273,13 @@ export class AssignModuleDto {
   @IsInt()
   @Min(1)
   dueInMinutes?: number;
+
+  @ApiPropertyOptional({ example: 7, description: 'Due N days from now. Default: the module deadlineDays (then 7)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  deadlineDays?: number;
 
   @ApiPropertyOptional({ example: false, description: 'Also reset due date on existing (not completed) assignments' })
   @IsOptional()
@@ -329,6 +341,17 @@ export class RiderListQuery {
   @ApiPropertyOptional({ description: 'Search name or phone' }) @IsOptional() @IsString() search?: string;
   @ApiPropertyOptional({ example: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @ApiPropertyOptional({ example: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+}
+
+export class RoosterRiderQuery extends RiderListQuery {
+  @ApiPropertyOptional({
+    enum: ['incomplete', 'complete', 'all'],
+    default: 'incomplete',
+    description: 'incomplete = riders with at least one module not completed (default)',
+  })
+  @IsOptional()
+  @IsIn(['incomplete', 'complete', 'all'])
+  training?: 'incomplete' | 'complete' | 'all';
 }
 
 /* ---------------- Admin: assignment rules ---------------- */

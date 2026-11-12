@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 import { BlockingService } from './blocking.service';
 import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
-import { ciEquals, escapeRegex, normalizeSaudiPhone, publicUser } from './common/util';
+import { ciEquals, normalizeSaudiPhone, publicUser, riderSearchOr } from './common/util';
 import { BlockRiderDto, CreateRiderDto, RiderListQuery, UnblockRiderDto, UpdateRiderDto } from './dto';
 import { canonicalCity, cleanText, workerTypeFilter } from './common/meta';
 import { ProgressService } from './progress.service';
@@ -42,10 +42,7 @@ export class AdminRidersController {
     if (q.status === 'active') filter.isBlocked = false;
     if (q.city) filter.city = ciEquals(canonicalCity(q.city));
     if (q.workerType) filter.workerType = workerTypeFilter(q.workerType);
-    if (q.search) {
-      const rx = new RegExp(escapeRegex(q.search.trim()), 'i');
-      filter.$or = [{ name: rx }, { phone: rx }];
-    }
+    if (q.search) filter.$or = riderSearchOr(q.search);
     const page = q.page || 1;
     const limit = q.limit || 20;
     const [rows, total] = await Promise.all([

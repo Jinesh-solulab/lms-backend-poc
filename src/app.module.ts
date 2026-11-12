@@ -11,6 +11,7 @@ import { config } from './config';
 import { DashboardController } from './dashboard.controller';
 import { ProgressService } from './progress.service';
 import { RiderController } from './rider.controller';
+import { RoosterController } from './rooster.controller';
 import { MetaController, RulesController } from './rules.controller';
 import { RulesService } from './rules.service';
 import { ALL_SCHEMAS } from './schemas';
@@ -22,7 +23,7 @@ import { ALL_SCHEMAS } from './schemas';
     JwtModule.register({ secret: config.jwtSecret, signOptions: { expiresIn: config.jwtExpiresIn as any } }),
     ScheduleModule.forRoot(),
   ],
-  controllers: [AuthController, MeController, RiderController, AdminModulesController, AdminRidersController, DashboardController, RulesController, MetaController],
+  controllers: [AuthController, MeController, RiderController, AdminModulesController, AdminRidersController, DashboardController, RulesController, MetaController, RoosterController],
   providers: [JwtAuthGuard, ProgressService, BlockingService, RulesService],
 })
 export class AppModule {}

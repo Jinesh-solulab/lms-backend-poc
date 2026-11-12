@@ -5,8 +5,8 @@ import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Model, Types } from 'mongoose';
 import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
-import { ciEquals, removeUpload, uploadOptions, uploadRelPath } from './common/util';
-import { canonicalCity, workerTypeFilter } from './common/meta';
+import { removeUpload, uploadOptions, uploadRelPath } from './common/util';
+import { riderFilter } from './common/meta';
 import { AssignModuleDto, CreateModuleDto, SaveQuizDto, UpdateModuleDto } from './dto';
 import { ProgressService } from './progress.service';
 import { DbModel, M } from './schemas';
@@ -155,22 +155,24 @@ export class AdminModulesController {
 
   @Post(':id/assign')
   @ApiOperation({
-    summary: 'Assign module to riders: by ids, by city, or all riders. Due = dueAt | dueInMinutes | deadlineDays.',
+    summary:
+      'One-off assign to riders: by ids and/or city / workerType / zone (all empty = every active rider). ' +
+      'Due = dueAt | dueInMinutes | deadlineDays | module deadlineDays | 7 days. Only riders matching today; use /admin/rules for future riders.',
   })
   async assign(@Param('id') id: string, @Body() dto: AssignModuleDto, @CurrentUser() admin: any) {
     const m = await this.getModule(id);
     const now = Date.now();
+    // Due date priority: dueAt > dueInMinutes > deadlineDays (body) > module deadlineDays > 7
     const dueAt = dto.dueAt
       ? new Date(dto.dueAt)
       : dto.dueInMinutes
         ? new Date(now + dto.dueInMinutes * 60_000)
-        : new Date(now + (m.deadlineDays || 7) * 86_400_000);
+        : new Date(now + (dto.deadlineDays || m.deadlineDays || 7) * 86_400_000);
     if (dueAt.getTime() <= now) throw new AppException('due_date_invalid', 400);
 
-    const filter: any = { role: 'rider', isActive: true };
+    // Same matching as assignment rules (city canonical + case-insensitive, workerType, zone)
+    const filter: any = riderFilter({ city: dto.city, workerType: dto.workerType, zone: dto.zone });
     if (dto.userIds?.length) filter._id = { $in: dto.userIds };
-    if (dto.city) filter.city = ciEquals(canonicalCity(dto.city));
-    if (dto.workerType) filter.workerType = workerTypeFilter(dto.workerType);
     const riders = await this.users.find(filter).select('_id').lean();
 
     let newlyAssigned = 0;

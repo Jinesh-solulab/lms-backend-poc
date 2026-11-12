@@ -22,6 +22,18 @@ export function normalizeSaudiPhone(input: string): string | null {
 export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const ciEquals = (s: string) => new RegExp(`^${escapeRegex(s.trim())}$`, 'i');
 
+/**
+ * $or for an admin "search name or phone" box. A Saudi number typed in any form (0500000003, 5500..., +966...)
+ * also matches the stored +9665XXXXXXXX. `prefix` is for aggregation paths such as 'u.'.
+ */
+export function riderSearchOr(search: string, prefix = '') {
+  const s = search.trim();
+  const or: any[] = [{ [`${prefix}name`]: new RegExp(escapeRegex(s), 'i') }, { [`${prefix}phone`]: new RegExp(escapeRegex(s), 'i') }];
+  const phone = normalizeSaudiPhone(s);
+  if (phone) or.push({ [`${prefix}phone`]: phone });
+  return or;
+}
+
 /** Pick the user's language from a { ar, en, ur } object. Fallback: English, then Arabic (Urdu is optional content). */
 export function loc(v: any, lang: Lang): string {
   if (!v) return '';
