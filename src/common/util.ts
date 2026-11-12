@@ -69,6 +69,7 @@ export function publicUser(u: any, lang: Lang) {
     city: u.city || null,
     workerType: u.workerType || 'rider',
     zone: u.zone || null,
+    avatarUrl: fileUrl(u.avatar?.path),
     language: u.language,
     isActive: u.isActive,
     isBlocked: !!u.isBlocked,
@@ -83,10 +84,15 @@ export function fileView(f: any) {
 }
 
 const VIDEO_EXT = ['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.3gp'];
+const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const AVATAR_MAX_MB = 5;
 
-/** Local disk storage for the POC: ./uploads/videos and ./uploads/pdfs, served at /uploads/... */
-export function uploadOptions(kind: 'video' | 'pdf'): MulterOptions {
-  const sub = kind === 'video' ? 'videos' : 'pdfs';
+export type UploadKind = 'video' | 'pdf' | 'avatar';
+const SUBDIR: Record<UploadKind, string> = { video: 'videos', pdf: 'pdfs', avatar: 'avatars' };
+
+/** Local disk storage for the POC: ./uploads/videos, ./uploads/pdfs, ./uploads/avatars, served at /uploads/... */
+export function uploadOptions(kind: UploadKind): MulterOptions {
+  const sub = SUBDIR[kind];
   return {
     storage: diskStorage({
       destination: (_req, _file, cb) => {
@@ -96,21 +102,22 @@ export function uploadOptions(kind: 'video' | 'pdf'): MulterOptions {
       },
       filename: (_req, file, cb) => cb(null, `${new Types.ObjectId().toHexString()}${path.extname(file.originalname).toLowerCase()}`),
     }),
-    limits: { fileSize: (kind === 'video' ? config.maxVideoMb : config.maxPdfMb) * 1024 * 1024 },
+    limits: { fileSize: (kind === 'video' ? config.maxVideoMb : kind === 'pdf' ? config.maxPdfMb : AVATAR_MAX_MB) * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       const allowed =
         kind === 'video'
           ? file.mimetype.startsWith('video/') || VIDEO_EXT.includes(ext)
-          : file.mimetype === 'application/pdf' || ext === '.pdf';
+          : kind === 'pdf'
+            ? file.mimetype === 'application/pdf' || ext === '.pdf'
+            : ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) && IMAGE_EXT.includes(ext);
       if (allowed) cb(null, true);
       else cb(new AppException('invalid_file_type', 400), false);
     },
   };
 }
 
-export const uploadRelPath = (kind: 'video' | 'pdf', filename: string) =>
-  `/uploads/${kind === 'video' ? 'videos' : 'pdfs'}/${filename}`;
+export const uploadRelPath = (kind: UploadKind, filename: string) => `/uploads/${SUBDIR[kind]}/${filename}`;
 
 export function removeUpload(relPath?: string | null) {
   if (!relPath || !relPath.startsWith('/uploads/')) return;

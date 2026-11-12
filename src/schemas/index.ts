@@ -49,6 +49,7 @@ export const UserSchema = new Schema(
     // rider | picker | bpo. Old rows without it count as 'rider' (see workerTypeFilter()).
     workerType: { type: String, enum: ['rider', 'picker', 'bpo'], default: 'rider', index: true },
     zone: { type: String, default: null, index: true },
+    avatar: { type: FileSchema, default: null }, // profile photo (local disk, /uploads/avatars)
     language: { type: String, enum: ['ar', 'en', 'ur'], default: 'en' },
     isActive: { type: Boolean, default: true },
     isBlocked: { type: Boolean, default: false, index: true },

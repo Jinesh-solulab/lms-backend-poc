@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
 import { Model } from 'mongoose';
 import { config } from './config';
@@ -9,7 +10,7 @@ import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
 import { resolveLang } from './common/messages';
 import { canonicalCity } from './common/meta';
-import { normalizeSaudiPhone, publicUser } from './common/util';
+import { normalizeSaudiPhone, publicUser, removeUpload, uploadOptions, uploadRelPath } from './common/util';
 import { RulesService } from './rules.service';
 import { AdminLoginDto, SendOtpDto, UpdateLanguageDto, UpdateProfileDto, VerifyOtpDto } from './dto';
 import { DbModel, M } from './schemas';
@@ -115,5 +116,33 @@ export class MeController {
     const updated = await this.users.findByIdAndUpdate(user._id, { $set }, { new: true }).lean();
     if (cityChanged) await this.rules.applyForRider(user._id);
     return ok('profile_updated', publicUser(updated, user.language));
+  }
+
+  @Post('avatar')
+  @HttpCode(200)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({ summary: 'Upload / replace my profile photo (form field "file", jpg/png/webp, max 5 MB). Returns the profile with avatarUrl.' })
+  @UseInterceptors(FileInterceptor('file', uploadOptions('avatar')))
+  async uploadAvatar(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: any) {
+    if (!file) throw new AppException('file_required', 400);
+    const avatar = {
+      path: uploadRelPath('avatar', file.filename),
+      originalName: file.originalname,
+      sizeBytes: file.size,
+      mimeType: file.mimetype,
+      uploadedAt: new Date(),
+    };
+    const updated = await this.users.findByIdAndUpdate(user._id, { $set: { avatar } }, { new: true }).lean();
+    removeUpload(user.avatar?.path); // old photo
+    return ok('avatar_updated', publicUser(updated, user.language));
+  }
+
+  @Delete('avatar')
+  @ApiOperation({ summary: 'Remove my profile photo (avatarUrl becomes null)' })
+  async removeAvatar(@CurrentUser() user: any) {
+    const updated = await this.users.findByIdAndUpdate(user._id, { $set: { avatar: null } }, { new: true }).lean();
+    removeUpload(user.avatar?.path);
+    return ok('avatar_removed', publicUser(updated, user.language));
   }
 }

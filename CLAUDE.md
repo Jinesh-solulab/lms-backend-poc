@@ -18,7 +18,7 @@
 ## Scope decisions for this POC (agreed with the user, 2026-11-12)
 - **Out of scope:** Bayzat, Rooster, webhooks, Redis, BullMQ.
 - **Stack:** NestJS 10 + MongoDB (Mongoose 8) only.
-- **Login:** Saudi mobile numbers only, **static OTP `126`** (env `STATIC_OTP`). Admin logs in with email + password.
+- **Login:** Saudi mobile numbers only, **static OTP `123456`** (env `STATIC_OTP`). Admin logs in with email + password.
 - **Languages:** **Arabic, English and Urdu** (`ar | en | ur`). The preference is stored on the user; API messages are returned in it. Content (`{ ar, en, ur }`) has `ur` optional: riders fall back to English (then Arabic) when it is empty (`loc()`).
 - **Storage:** videos and PDFs on **local disk** (`./uploads`), served at `/uploads/...`.
 - **Blocking:** **automatic by cron** (every minute) when the deadline passes. Admin can unblock any time. **Auto-unblock** (added 2026-11-12, user request): when the rider syncs and has finished the overdue module(s) of the current block period, the system unblocks (`AUTO_UNBLOCK` log); if another one is still overdue the reason moves to it (`STILL_BLOCKED` log). Manual blocks are never auto-lifted.
@@ -34,7 +34,7 @@
 | `common/http.ts` | `AppException(key)`, `ok(key, data)`, response interceptor and exception filter that localize messages |
 | `common/auth.ts` | `JwtAuthGuard` (reloads the user every request), `@Auth('admin' \| 'rider')`, `@CurrentUser()` |
 | `common/util.ts` | Saudi phone normalizer, `loc()`, `publicUser()`, `blockInfo()`, multer upload options |
-| `auth.controller.ts` | `/auth/*`, `/users/me*` |
+| `auth.controller.ts` | `/auth/*`, `/users/me*` (incl. `POST/DELETE /users/me/avatar`: jpg/png/webp ≤ 5 MB in `uploads/avatars`; `publicUser` returns `avatarUrl`) |
 | `rider.controller.ts` | `/rider/modules`, `/rider/modules/:id/package`, `/rider/modules/:id/progress`, `/rider/sync` |
 | `rules.service.ts` | Assignment rules: `applyRule`, `applyForRider` (hook), `preview`, 5-min sweep cron |
 | `rules.controller.ts` | `/admin/rules*` CRUD + preview + apply; `MetaController` `/meta/cities|worker-types|zones` (public) |
@@ -45,7 +45,7 @@
 | `blocking.service.ts` | Deadline cron: `assigned` + past `dueAt` → `overdue` + block user + log |
 | `rooster.controller.ts` | `GET /admin/rooster/riders`: admin "Rooster" screen (POC stand-in for the dispatch integration). Riders with training counts + completion %, `dispatch` ON_HOLD/ALLOWED, overall summary; `training=incomplete` (default) / complete / all. Block/unblock and "View" reuse `/admin/riders/:id*` |
 | `dashboard.controller.ts` | summary, by-city (groupBy), by-module, trend, non-compliant, export.csv, per-module stats and rider list. Shared filters + one compliance definition |
-| `seed.ts` | 1 admin, 10 riders (+966500000001..10, Riyadh/Jeddah), "Food Safety Basics" module + 5-question ar/en/ur quiz, assigned to all riders (re-running backfills Urdu on an old seed) |
+| `seed.ts` | Admin `admin@hs-demo.com`; 36 riders (+966500000001..36, Riyadh/Jeddah/Dammam/Makkah); "Food Safety Basics" + "Road Safety for Riders" (ar/en/ur, 5-question quizzes). 3 weeks of history for trend/compliance: on-time + late completions with module_progress, quiz_attempts, BLOCK/AUTO_UNBLOCK logs; 2 riders still blocked (Rahul Nair, Adnan Qureshi). Riders 1-10 get a fresh Food Safety for the live demo. Only adds missing rows (raw collection writes keep historical dates). `--reset --yes` drops the DB first. Attaches `seed-assets/{food-safety,road-safety}.{mp4,pdf}` when present |
 
 ## Key rules (don't break these)
 - **IDs:** use MongoDB ObjectIds for every ID (DB, API, docs/Swagger examples, filenames). Never UUIDs.
@@ -77,7 +77,8 @@
 
 ## Commands
 ```
-npm run seed        # seed demo data
+npm run seed        # seed demo data (only adds what is missing)
+npm run seed:reset -- --yes   # DROP the MONGO_URI database, then seed (refuses without --yes)
 npm run start:dev   # dev server (ts-node-dev)
 npm run build && npm start
 node scripts/smoke.mjs   # needs the server on SMOKE_API (default http://localhost:3999/api) and a DB whose name contains "smoke"

@@ -23,7 +23,7 @@ let r = await call('POST', '/auth/send-otp', { body: { phone: '12345' }, lang: '
 check('invalid phone rejected (ar msg)', r.status === 400, r.message);
 r = await call('POST', '/auth/verify-otp', { body: { phone: '0500000001', otp: '999' } });
 check('wrong otp rejected', r.status === 401, r.message);
-r = await call('POST', '/auth/verify-otp', { body: { phone: '٠٥٠٠٠٠٠٠٠١', otp: '126' } });
+r = await call('POST', '/auth/verify-otp', { body: { phone: '٠٥٠٠٠٠٠٠٠١', otp: '123456' } });
 check('arabic-digit phone + otp login', r.status === 200 && r.data?.token, `${r.message} lang=${r.data?.user?.language}`);
 const rider = r.data.token;
 r = await call('PATCH', '/users/me/language', { token: rider, body: { language: 'en' } });
@@ -32,7 +32,7 @@ r = await call('PATCH', '/users/me/language', { token: rider, body: { language: 
 check('language -> ar', r.data?.language === 'ar', r.message);
 
 // admin
-r = await call('POST', '/auth/admin/login', { body: { email: 'admin@hungerstation.local', password: 'Admin@123' } });
+r = await call('POST', '/auth/admin/login', { body: { email: 'admin@hs-demo.com', password: 'Admin@123' } });
 check('admin login', !!r.data?.token);
 const admin = r.data.token;
 r = await call('GET', '/admin/modules', { token: rider });
@@ -87,7 +87,7 @@ r = await call('GET', `/rider/modules/${mid}/progress`, { token: rider });
 check('attempts still 1 after re-sync', r.data?.quizAttempts === 1, `attempts=${r.data?.quizAttempts}`);
 
 // 5. auto-block via deadline check
-const r2 = await call('POST', '/auth/verify-otp', { body: { phone: '0500000002', otp: '126' } });
+const r2 = await call('POST', '/auth/verify-otp', { body: { phone: '0500000002', otp: '123456' } });
 const rider2 = r2.data.token;
 r = await call('POST', `/admin/modules/${mid}/assign`, { token: admin, body: { userIds: [r2.data.user.id], dueInMinutes: 1, updateExisting: true } });
 check('assign rider2 due in 1 min', r.status === 201);

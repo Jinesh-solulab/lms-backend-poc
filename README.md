@@ -7,14 +7,15 @@ NestJS + MongoDB. No Redis, no queue. Videos and PDFs are stored on local disk (
 ```bash
 npm install
 cp .env.example .env      # fill values
-npm run seed              # admin + 10 riders + "Food Safety Basics" module/quiz, assigned to all riders
+npm run seed              # admin + 36 riders + 2 modules (ar/en/ur) + 3 weeks of history. Safe to re-run
+npm run seed:reset -- --yes   # DROPS the database in MONGO_URI, then seeds. Run before the demo
 npm run start:dev         # or: npm run build && npm start
 ```
 
 - Health: `http://localhost:3000/` (or `/api/health`) returns `{ success: true, message: "HungerStation LMS server is running", data: { status, database, uptimeSeconds, ... } }`
 - Swagger: `http://localhost:3000/api/docs`
 - Postman: import `http://localhost:3000/api/docs-json`
-- Seed logins: admin `admin@hungerstation.local` / `Admin@123`; riders `0500000001` … `0500000010`, OTP `126`
+- Seed logins: admin `admin@hs-demo.com` / `Admin@123`; riders `0500000001` … `0500000036` (1–10 have a fresh Food Safety for the live demo), OTP = `STATIC_OTP` in `.env`. Optional demo videos/PDFs: see `seed-assets/README.md`
 
 Every response has the shape `{ success, message, data }`. `message` is in the user's saved language (`ar` or `en`). Before login it follows the `Accept-Language` header.
 
@@ -28,6 +29,7 @@ Every response has the shape `{ success, message, data }`. `message` is in the u
 | Me | `GET /users/me` | Includes `isBlocked` and a localized `block.message` |
 | | `PATCH /users/me/language` | `{ language: "ar" \| "en" }` |
 | | `PATCH /users/me` | Name; a rider can set `city` once (409 `city_already_set` after that) |
+| | `POST /users/me/avatar`, `DELETE /users/me/avatar` | Profile photo: multipart field `file`, jpg/png/webp, max 5 MB. Profile responses include `avatarUrl` (null when none) |
 | Meta (public) | `GET /meta/cities`, `/meta/worker-types`, `/meta/zones` | Dropdown data with ar/en/ur labels |
 | Rider | `GET /rider/modules` | Assigned modules, localized, with progress / due date / status |
 | | `GET /rider/modules/:id/package?lang=ar\|en\|all` | Offline package: video and PDF URLs, quiz without answers, `version` |
@@ -36,7 +38,7 @@ Every response has the shape `{ success, message, data }`. `message` is in the u
 | Admin modules | `POST /admin/modules`, `GET /admin/modules`, `GET/PATCH /admin/modules/:id` | Titles and descriptions in `{ ar, en, ur }` (`ur` optional, falls back to English) |
 | | `POST /admin/modules/:id/video`, `POST /admin/modules/:id/pdf` | multipart, field `file` |
 | | `PUT /admin/modules/:id/quiz` | `passMark` (e.g. 3) + questions with `correctIndex` |
-| | `POST /admin/modules/:id/assign` | One-off: `userIds` and/or `city` / `workerType`; due date from `dueAt`, `dueInMinutes` (demo) or `deadlineDays` |
+| | `POST /admin/modules/:id/assign` | One-off: `userIds` and/or `city` / `workerType` / `zone`; due date from `dueAt`, `dueInMinutes` (demo) or `deadlineDays` |
 | Assignment rules | `GET /admin/rules?moduleId=` | Each rule has `assignedCount`, `lastRunAt`, `matchedNow` |
 | | `POST /admin/rules` | `{ name, moduleId, criteria: { city?, workerType?, zone? }, deadlineDays?, deadlineMinutes? (demo), isActive? }`; applies now (`assignedNow`) |
 | | `PATCH /admin/rules/:id`, `DELETE /admin/rules/:id` | Edit / toggle (re-applies when active). Delete keeps existing assignments |

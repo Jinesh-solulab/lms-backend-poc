@@ -38,7 +38,7 @@ export class VerifyOtpDto {
   @IsString()
   phone: string;
 
-  @ApiProperty({ example: '126', description: 'Static OTP for the POC (STATIC_OTP in .env)' })
+  @ApiProperty({ example: '123456', description: 'Static OTP for the POC (STATIC_OTP in .env)' })
   @IsString()
   otp: string;
 
@@ -50,7 +50,7 @@ export class VerifyOtpDto {
 }
 
 export class AdminLoginDto {
-  @ApiProperty({ example: 'admin@hungerstation.local' })
+  @ApiProperty({ example: 'admin@hs-demo.com' })
   @IsEmail()
   email: string;
 
