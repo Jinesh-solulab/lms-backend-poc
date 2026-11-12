@@ -7,7 +7,9 @@ import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
 import { ciEquals, escapeRegex, normalizeSaudiPhone, publicUser } from './common/util';
 import { BlockRiderDto, CreateRiderDto, RiderListQuery, UnblockRiderDto, UpdateRiderDto } from './dto';
+import { canonicalCity, cleanText, workerTypeFilter } from './common/meta';
 import { ProgressService } from './progress.service';
+import { RulesService } from './rules.service';
 import { DbModel, M } from './schemas';
 
 @ApiTags('Admin - Riders & Blocking')
@@ -17,6 +19,7 @@ export class AdminRidersController {
   constructor(
     private blocking: BlockingService,
     private progress: ProgressService,
+    private rules: RulesService,
     @InjectModel(M.User) private users: DbModel,
     @InjectModel(M.Assignment) private assignments: DbModel,
     @InjectModel(M.TrainingModule) private modules: DbModel,
@@ -37,7 +40,8 @@ export class AdminRidersController {
     const filter: any = { role: 'rider' };
     if (q.status === 'blocked') filter.isBlocked = true;
     if (q.status === 'active') filter.isBlocked = false;
-    if (q.city) filter.city = ciEquals(q.city);
+    if (q.city) filter.city = ciEquals(canonicalCity(q.city));
+    if (q.workerType) filter.workerType = workerTypeFilter(q.workerType);
     if (q.search) {
       const rx = new RegExp(escapeRegex(q.search.trim()), 'i');
       filter.$or = [{ name: rx }, { phone: rx }];
@@ -72,13 +76,22 @@ export class AdminRidersController {
   }
 
   @Post('riders')
-  @ApiOperation({ summary: 'Create rider (phone, name, city, language)' })
+  @ApiOperation({ summary: 'Create rider (phone, name, city, workerType, zone, language). Active assignment rules run right away.' })
   async create(@Body() dto: CreateRiderDto, @CurrentUser() admin: any) {
     const phone = normalizeSaudiPhone(dto.phone);
     if (!phone) throw new AppException('invalid_phone', 400);
     if (await this.users.exists({ phone })) throw new AppException('phone_exists', 409);
-    const u = await this.users.create({ phone, name: dto.name || '', city: dto.city || null, language: dto.language || 'ar', role: 'rider' });
-    return ok('rider_created', publicUser(u.toObject(), admin.language));
+    const u = await this.users.create({
+      phone,
+      name: dto.name || '',
+      city: canonicalCity(dto.city),
+      workerType: dto.workerType || 'rider',
+      zone: cleanText(dto.zone),
+      language: dto.language || 'ar',
+      role: 'rider',
+    });
+    const assignedByRules = await this.rules.applyForRider(u._id);
+    return ok('rider_created', { ...publicUser(u.toObject(), admin.language), assignedByRules });
   }
 
   @Get('riders/:id')
@@ -117,11 +130,20 @@ export class AdminRidersController {
   }
 
   @Patch('riders/:id')
-  @ApiOperation({ summary: 'Edit rider (name, city, language, active)' })
+  @ApiOperation({ summary: 'Edit rider (name, city, workerType, zone, language, active). City / type / zone change re-runs assignment rules.' })
   async update(@Param('id') id: string, @Body() dto: UpdateRiderDto, @CurrentUser() admin: any) {
-    await this.getRider(id);
-    const u = await this.users.findByIdAndUpdate(id, { $set: dto }, { new: true }).lean();
-    return ok('rider_updated', publicUser(u, admin.language));
+    const before = await this.getRider(id);
+    const $set: any = { ...dto };
+    if (dto.city !== undefined) $set.city = canonicalCity(dto.city);
+    if (dto.zone !== undefined) $set.zone = cleanText(dto.zone);
+    const u = await this.users.findByIdAndUpdate(id, { $set }, { new: true }).lean();
+    const changed =
+      (u.city || null) !== (before.city || null) ||
+      (u.workerType || 'rider') !== (before.workerType || 'rider') ||
+      (u.zone || null) !== (before.zone || null) ||
+      (u.isActive && !before.isActive);
+    const assignedByRules = changed ? await this.rules.applyForRider(u._id) : 0;
+    return ok('rider_updated', { ...publicUser(u, admin.language), assignedByRules });
   }
 
   @Post('riders/:id/block')

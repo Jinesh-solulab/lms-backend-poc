@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -22,6 +22,8 @@ import {
 
 const LANG_VALUES = ['ar', 'en', 'ur'];
 type LangValue = 'ar' | 'en' | 'ur';
+export const WORKER_TYPES = ['rider', 'picker', 'bpo'];
+type WorkerType = 'rider' | 'picker' | 'bpo';
 
 /* ---------------- Auth / users ---------------- */
 
@@ -39,6 +41,12 @@ export class VerifyOtpDto {
   @ApiProperty({ example: '126', description: 'Static OTP for the POC (STATIC_OTP in .env)' })
   @IsString()
   otp: string;
+
+  @ApiPropertyOptional({ example: 'Riyadh', description: 'Optional. Saved only when the rider has no city yet (first registration). Used by assignment rules.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  city?: string;
 }
 
 export class AdminLoginDto {
@@ -63,6 +71,12 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(100)
   name?: string;
+
+  @ApiPropertyOptional({ example: 'Riyadh', description: 'Rider can set the city once (while it is empty). After that only an admin can change it.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  city?: string;
 }
 
 /* ---------------- Admin: riders ---------------- */
@@ -86,11 +100,24 @@ export class CreateRiderDto {
   @IsOptional()
   @IsIn(LANG_VALUES)
   language?: LangValue;
+
+  @ApiPropertyOptional({ enum: WORKER_TYPES, example: 'rider', default: 'rider' })
+  @IsOptional()
+  @IsIn(WORKER_TYPES)
+  workerType?: WorkerType;
+
+  @ApiPropertyOptional({ example: 'North' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  zone?: string;
 }
 
 export class UpdateRiderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional({ example: 'Jeddah' }) @IsOptional() @IsString() city?: string;
+  @ApiPropertyOptional({ enum: WORKER_TYPES }) @IsOptional() @IsIn(WORKER_TYPES) workerType?: WorkerType;
+  @ApiPropertyOptional({ example: 'North' }) @IsOptional() @IsString() @MaxLength(60) zone?: string;
   @ApiPropertyOptional({ enum: LANG_VALUES }) @IsOptional() @IsIn(LANG_VALUES) language?: LangValue;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
 }
@@ -226,6 +253,11 @@ export class AssignModuleDto {
   @IsString()
   city?: string;
 
+  @ApiPropertyOptional({ enum: WORKER_TYPES, description: 'Assign to all riders of this worker type' })
+  @IsOptional()
+  @IsIn(WORKER_TYPES)
+  workerType?: WorkerType;
+
   @ApiPropertyOptional({ example: '2026-11-20T18:00:00.000Z', description: 'Exact due date (overrides deadlineDays)' })
   @IsOptional()
   @IsDateString()
@@ -293,7 +325,124 @@ export class SyncDto {
 export class RiderListQuery {
   @ApiPropertyOptional({ enum: ['blocked', 'active'] }) @IsOptional() @IsIn(['blocked', 'active']) status?: string;
   @ApiPropertyOptional({ example: 'Riyadh' }) @IsOptional() @IsString() city?: string;
+  @ApiPropertyOptional({ enum: WORKER_TYPES }) @IsOptional() @IsIn(WORKER_TYPES) workerType?: string;
   @ApiPropertyOptional({ description: 'Search name or phone' }) @IsOptional() @IsString() search?: string;
   @ApiPropertyOptional({ example: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @ApiPropertyOptional({ example: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+}
+
+/* ---------------- Admin: assignment rules ---------------- */
+
+export class RuleCriteriaDto {
+  @ApiPropertyOptional({ example: 'Riyadh', description: 'Empty / null = any city. Case-insensitive.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  city?: string | null;
+
+  @ApiPropertyOptional({ enum: WORKER_TYPES, description: 'Empty / null = any worker type' })
+  @IsOptional()
+  @IsIn(WORKER_TYPES)
+  workerType?: WorkerType | null;
+
+  @ApiPropertyOptional({ example: 'North', description: 'Empty / null = any zone' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  zone?: string | null;
+}
+
+export class CreateRuleDto {
+  @ApiProperty({ example: 'Riyadh riders -> Road Safety' })
+  @IsString()
+  @Length(1, 120)
+  name: string;
+
+  @ApiProperty({ example: '6735a1f04c2b9e1d8a7f3c30' })
+  @IsMongoId()
+  moduleId: string;
+
+  @ApiPropertyOptional({ type: RuleCriteriaDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RuleCriteriaDto)
+  criteria?: RuleCriteriaDto;
+
+  @ApiPropertyOptional({ example: 7, description: 'Due = the moment a rider matches + N days. Default: the module deadlineDays' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  deadlineDays?: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'DEMO: due N minutes after matching (overrides deadlineDays). Send null to clear.' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  deadlineMinutes?: number | null;
+
+  @ApiPropertyOptional({ example: true, default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateRuleDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 120) name?: string;
+  @ApiPropertyOptional({ type: RuleCriteriaDto }) @IsOptional() @ValidateNested() @Type(() => RuleCriteriaDto) criteria?: RuleCriteriaDto;
+  @ApiPropertyOptional({ example: 7 }) @IsOptional() @IsInt() @Min(1) @Max(365) deadlineDays?: number;
+  @ApiPropertyOptional({ example: 3 }) @IsOptional() @IsInt() @Min(1) @Max(100000) deadlineMinutes?: number | null;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class RulePreviewDto {
+  @ApiPropertyOptional({ type: RuleCriteriaDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RuleCriteriaDto)
+  criteria?: RuleCriteriaDto;
+
+  @ApiPropertyOptional({ example: '6735a1f04c2b9e1d8a7f3c30', description: 'Optional: also returns alreadyAssigned / willAssign for this module' })
+  @IsOptional()
+  @IsMongoId()
+  moduleId?: string;
+}
+
+export class RuleListQuery {
+  @ApiPropertyOptional({ example: '6735a1f04c2b9e1d8a7f3c30' }) @IsOptional() @IsMongoId() moduleId?: string;
+}
+
+/* ---------------- Admin: dashboard filters ---------------- */
+
+export class DashboardFilterQuery {
+  @ApiPropertyOptional({ example: '6735a1f04c2b9e1d8a7f3c30' }) @IsOptional() @IsMongoId() moduleId?: string;
+  @ApiPropertyOptional({ example: 'Riyadh' }) @IsOptional() @IsString() city?: string;
+  @ApiPropertyOptional({ enum: WORKER_TYPES }) @IsOptional() @IsIn(WORKER_TYPES) workerType?: string;
+  @ApiPropertyOptional({ example: 'North' }) @IsOptional() @IsString() zone?: string;
+  @ApiPropertyOptional({ example: '2026-11-01', description: 'assignedAt from (inclusive)' }) @IsOptional() @IsDateString() from?: string;
+  @ApiPropertyOptional({ example: '2026-11-30', description: 'assignedAt to (inclusive; a date-only value covers the whole day, Riyadh time)' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
+export class ByGroupQuery extends DashboardFilterQuery {
+  @ApiPropertyOptional({ enum: ['city', 'workerType', 'zone'], default: 'city' }) @IsOptional() @IsIn(['city', 'workerType', 'zone']) groupBy?: string;
+}
+
+export class TrendQuery extends DashboardFilterQuery {
+  @ApiPropertyOptional({ example: 30, description: '1-180, default 30' }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(180) days?: number;
+}
+
+export class NonCompliantQuery extends DashboardFilterQuery {
+  @ApiPropertyOptional({ example: 50, description: '1-500, default 50' }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) limit?: number;
+  @ApiPropertyOptional({ example: false, description: 'Also include riders who completed late' }) @IsOptional() @Transform(({ value }) => value === true || value === 'true' || value === '1') @IsBoolean() includeLate?: boolean;
+}
+
+export class ExportQuery extends DashboardFilterQuery {
+  @ApiPropertyOptional({ enum: ['summary', 'by-city', 'by-module', 'non-compliant'], default: 'non-compliant' })
+  @IsOptional()
+  @IsIn(['summary', 'by-city', 'by-module', 'non-compliant'])
+  type?: string;
 }

@@ -57,6 +57,15 @@ const en: Record<string, string> = {
     'You are blocked because "{title}" was not completed before the deadline. Please contact your supervisor.',
   blocked_manual_reason: 'You are blocked by admin: {note}',
   server_running: 'HungerStation LMS server is running',
+  rules_list: 'Assignment rules loaded',
+  rule_created: 'Rule created and assigned to {count} riders',
+  rule_updated: 'Rule updated',
+  rule_deleted: 'Rule deleted. Existing assignments were kept.',
+  rule_not_found: 'Assignment rule not found',
+  rule_applied: 'Rule applied: {count} new riders assigned',
+  rules_preview: '{matched} riders match',
+  meta: 'Loaded',
+  city_already_set: 'City is already set. Please ask your supervisor to change it.',
   sync_done_unblocked: 'Synced: {accepted} new, {duplicates} already received. Training complete, your account is unblocked.',
 };
 
@@ -114,6 +123,15 @@ const ar: Record<string, string> = {
   blocked_overdue_reason: 'تم حظرك لعدم إكمال "{title}" قبل الموعد النهائي. يرجى التواصل مع المشرف.',
   blocked_manual_reason: 'تم حظرك من قبل الإدارة: {note}',
   server_running: 'خادم نظام التدريب لهنقرستيشن يعمل',
+  rules_list: 'تم تحميل قواعد الإسناد',
+  rule_created: 'تم إنشاء القاعدة وإسنادها إلى {count} مندوب',
+  rule_updated: 'تم تحديث القاعدة',
+  rule_deleted: 'تم حذف القاعدة. تم الإبقاء على الإسنادات الحالية.',
+  rule_not_found: 'قاعدة الإسناد غير موجودة',
+  rule_applied: 'تم تطبيق القاعدة: إسناد {count} مندوب جديد',
+  rules_preview: '{matched} مندوب مطابق',
+  meta: 'تم التحميل',
+  city_already_set: 'تم تحديد المدينة مسبقًا. يرجى التواصل مع المشرف لتغييرها.',
   sync_done_unblocked: 'تمت المزامنة: {accepted} جديد، {duplicates} مستلم مسبقًا. اكتمل التدريب وتم رفع الحظر عن حسابك.',
 };
 
@@ -172,6 +190,15 @@ const ur: Record<string, string> = {
     'آپ کو بلاک کر دیا گیا ہے کیونکہ "{title}" آخری تاریخ سے پہلے مکمل نہیں ہوا۔ براہ کرم اپنے سپروائزر سے رابطہ کریں۔',
   blocked_manual_reason: 'آپ کو ایڈمن نے بلاک کیا ہے: {note}',
   server_running: 'ہنگر اسٹیشن LMS سرور چل رہا ہے',
+  rules_list: 'اسائنمنٹ رولز لوڈ ہو گئے',
+  rule_created: 'رول بن گیا اور {count} رائیڈرز کو اسائن ہوا',
+  rule_updated: 'رول اپ ڈیٹ ہو گیا',
+  rule_deleted: 'رول حذف ہو گیا۔ موجودہ اسائنمنٹس برقرار ہیں۔',
+  rule_not_found: 'اسائنمنٹ رول نہیں ملا',
+  rule_applied: 'رول لاگو ہو گیا: {count} نئے رائیڈرز اسائن ہوئے',
+  rules_preview: '{matched} رائیڈرز میچ کرتے ہیں',
+  meta: 'لوڈ ہو گیا',
+  city_already_set: 'شہر پہلے سے سیٹ ہے۔ تبدیلی کے لیے اپنے سپروائزر سے رابطہ کریں۔',
   sync_done_unblocked: 'ہم آہنگی مکمل: {accepted} نئے، {duplicates} پہلے سے موصول۔ تربیت مکمل، آپ کا اکاؤنٹ ان بلاک ہو گیا ہے۔',
 };
 

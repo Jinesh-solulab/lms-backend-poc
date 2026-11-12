@@ -8,7 +8,9 @@ import { config } from './config';
 import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
 import { resolveLang } from './common/messages';
+import { canonicalCity } from './common/meta';
 import { normalizeSaudiPhone, publicUser } from './common/util';
+import { RulesService } from './rules.service';
 import { AdminLoginDto, SendOtpDto, UpdateLanguageDto, UpdateProfileDto, VerifyOtpDto } from './dto';
 import { DbModel, M } from './schemas';
 
@@ -18,6 +20,7 @@ import { DbModel, M } from './schemas';
 export class AuthController {
   constructor(
     private jwt: JwtService,
+    private rules: RulesService,
     @InjectModel(M.User) private users: DbModel,
   ) {}
 
@@ -38,10 +41,20 @@ export class AuthController {
     if (!phone) throw new AppException('invalid_phone', 400);
     if (String(dto.otp).trim() !== config.staticOtp) throw new AppException('invalid_otp', 401);
 
+    const city = canonicalCity(dto.city);
     let user = await this.users.findOne({ phone }).lean();
     if (user && user.role !== 'rider') throw new AppException('account_not_rider', 403);
-    if (!user) user = (await this.users.create({ phone, role: 'rider', language: resolveLang(req) })).toObject();
+    let profileChanged = false;
+    if (!user) {
+      user = (await this.users.create({ phone, role: 'rider', language: resolveLang(req), city })).toObject();
+      profileChanged = true;
+    } else if (city && !user.city) {
+      // City can be given at registration; an existing city is only changed by an admin.
+      user = await this.users.findByIdAndUpdate(user._id, { $set: { city } }, { new: true }).lean();
+      profileChanged = true;
+    }
     if (!user.isActive) throw new AppException('account_inactive', 403);
+    if (profileChanged) await this.rules.applyForRider(user._id); // auto-assign by saved rules
 
     await this.users.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
     req.user = user; // so the response message uses the rider's saved language
@@ -68,7 +81,10 @@ export class AuthController {
 @Auth()
 @Controller('users/me')
 export class MeController {
-  constructor(@InjectModel(M.User) private users: DbModel) {}
+  constructor(
+    private rules: RulesService,
+    @InjectModel(M.User) private users: DbModel,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'My profile, including block status + localized reason' })
@@ -85,9 +101,19 @@ export class MeController {
   }
 
   @Patch()
-  @ApiOperation({ summary: 'Update my name' })
+  @ApiOperation({ summary: 'Update my name; a rider can also set their city once (while it is empty)' })
   async update(@Body() dto: UpdateProfileDto, @CurrentUser() user: any) {
-    const updated = await this.users.findByIdAndUpdate(user._id, { $set: dto }, { new: true }).lean();
+    const $set: any = {};
+    if (dto.name !== undefined) $set.name = dto.name;
+    const city = canonicalCity(dto.city);
+    let cityChanged = false;
+    if (city && city !== user.city) {
+      if (user.role === 'rider' && user.city) throw new AppException('city_already_set', 409);
+      $set.city = city;
+      cityChanged = true;
+    }
+    const updated = await this.users.findByIdAndUpdate(user._id, { $set }, { new: true }).lean();
+    if (cityChanged) await this.rules.applyForRider(user._id);
     return ok('profile_updated', publicUser(updated, user.language));
   }
 }

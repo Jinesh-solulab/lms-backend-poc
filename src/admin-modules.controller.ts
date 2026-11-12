@@ -6,6 +6,7 @@ import { Model, Types } from 'mongoose';
 import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
 import { ciEquals, removeUpload, uploadOptions, uploadRelPath } from './common/util';
+import { canonicalCity, workerTypeFilter } from './common/meta';
 import { AssignModuleDto, CreateModuleDto, SaveQuizDto, UpdateModuleDto } from './dto';
 import { ProgressService } from './progress.service';
 import { DbModel, M } from './schemas';
@@ -168,7 +169,8 @@ export class AdminModulesController {
 
     const filter: any = { role: 'rider', isActive: true };
     if (dto.userIds?.length) filter._id = { $in: dto.userIds };
-    if (dto.city) filter.city = ciEquals(dto.city);
+    if (dto.city) filter.city = ciEquals(canonicalCity(dto.city));
+    if (dto.workerType) filter.workerType = workerTypeFilter(dto.workerType);
     const riders = await this.users.find(filter).select('_id').lean();
 
     let newlyAssigned = 0;

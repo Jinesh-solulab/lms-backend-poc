@@ -55,6 +55,8 @@ export function publicUser(u: any, lang: Lang) {
     name: u.name || '',
     role: u.role,
     city: u.city || null,
+    workerType: u.workerType || 'rider',
+    zone: u.zone || null,
     language: u.language,
     isActive: u.isActive,
     isBlocked: !!u.isBlocked,

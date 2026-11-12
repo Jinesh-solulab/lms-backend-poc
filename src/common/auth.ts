@@ -29,7 +29,11 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
     const header: string = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    let token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    // CSV export links are opened by the browser, which cannot send the header.
+    if (!token && req.method === 'GET' && String(req.path || '').endsWith('.csv') && req.query?.access_token) {
+      token = String(req.query.access_token);
+    }
     if (!token) throw new AppException('unauthorized', 401);
 
     let payload: any;

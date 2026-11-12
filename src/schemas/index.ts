@@ -12,6 +12,7 @@ export const M = {
   ModuleProgress: 'ModuleProgress',
   QuizAttempt: 'QuizAttempt',
   BlockLog: 'BlockLog',
+  AssignmentRule: 'AssignmentRule',
 } as const;
 
 /** Text in every app language. Urdu is optional: riders fall back to English when it is empty (see loc()). */
@@ -45,6 +46,9 @@ export const UserSchema = new Schema(
     name: { type: String, default: '' },
     role: { type: String, enum: ['rider', 'admin'], default: 'rider', index: true },
     city: { type: String, default: null, index: true },
+    // rider | picker | bpo. Old rows without it count as 'rider' (see workerTypeFilter()).
+    workerType: { type: String, enum: ['rider', 'picker', 'bpo'], default: 'rider', index: true },
+    zone: { type: String, default: null, index: true },
     language: { type: String, enum: ['ar', 'en', 'ur'], default: 'en' },
     isActive: { type: Boolean, default: true },
     isBlocked: { type: Boolean, default: false, index: true },
@@ -96,6 +100,7 @@ export const AssignmentSchema = new Schema(
     completedAt: { type: Date, default: null },
     overdueAt: { type: Date, default: null },
     assignedBy: { type: ObjectId, ref: M.User },
+    ruleId: { type: ObjectId, ref: 'AssignmentRule', default: null }, // set when an assignment rule created this row
   },
   { timestamps: true, collection: 'assignments' },
 );
@@ -174,6 +179,26 @@ export const BlockLogSchema = new Schema(
   { timestamps: { createdAt: true, updatedAt: false }, collection: 'block_logs' },
 );
 
+/** Saved "who gets this module" rule. Applied on create and whenever a rider is created / changes city, worker type or zone. */
+export const AssignmentRuleSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    moduleId: { type: ObjectId, ref: M.TrainingModule, required: true, index: true },
+    criteria: {
+      city: { type: String, default: null }, // null = any city (case-insensitive, trimmed)
+      workerType: { type: String, default: null }, // null = any
+      zone: { type: String, default: null }, // null = any
+    },
+    deadlineDays: { type: Number, default: 7 },
+    deadlineMinutes: { type: Number, default: null }, // DEMO: overrides deadlineDays when set
+    isActive: { type: Boolean, default: true, index: true },
+    assignedCount: { type: Number, default: 0 },
+    lastRunAt: { type: Date, default: null },
+    createdBy: { type: ObjectId, ref: M.User },
+  },
+  { timestamps: true, collection: 'assignment_rules', minimize: false },
+);
+
 export const ALL_SCHEMAS = [
   { name: M.User, schema: UserSchema },
   { name: M.TrainingModule, schema: TrainingModuleSchema },
@@ -183,6 +208,7 @@ export const ALL_SCHEMAS = [
   { name: M.ModuleProgress, schema: ModuleProgressSchema },
   { name: M.QuizAttempt, schema: QuizAttemptSchema },
   { name: M.BlockLog, schema: BlockLogSchema },
+  { name: M.AssignmentRule, schema: AssignmentRuleSchema },
 ];
 
 /** POC: loose model typing (mongoose lean() unions are noisy with Model<any>). */
