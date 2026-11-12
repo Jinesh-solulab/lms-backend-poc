@@ -1,0 +1,207 @@
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Model } from 'mongoose';
+import { BlockingService } from './blocking.service';
+import { Auth, CurrentUser } from './common/auth';
+import { AppException, ok } from './common/http';
+import { ciEquals, escapeRegex, normalizeSaudiPhone, publicUser } from './common/util';
+import { BlockRiderDto, CreateRiderDto, RiderListQuery, UnblockRiderDto, UpdateRiderDto } from './dto';
+import { ProgressService } from './progress.service';
+import { DbModel, M } from './schemas';
+
+@ApiTags('Admin - Riders & Blocking')
+@Auth('admin')
+@Controller('admin')
+export class AdminRidersController {
+  constructor(
+    private blocking: BlockingService,
+    private progress: ProgressService,
+    @InjectModel(M.User) private users: DbModel,
+    @InjectModel(M.Assignment) private assignments: DbModel,
+    @InjectModel(M.TrainingModule) private modules: DbModel,
+    @InjectModel(M.Quiz) private quizzes: DbModel,
+    @InjectModel(M.ModuleProgress) private progressRows: DbModel,
+    @InjectModel(M.BlockLog) private logs: DbModel,
+  ) {}
+
+  private async getRider(id: string): Promise<any> {
+    const u: any = await this.users.findOne({ _id: id, role: 'rider' }).lean();
+    if (!u) throw new AppException('user_not_found', 404);
+    return u;
+  }
+
+  @Get('riders')
+  @ApiOperation({ summary: 'Rider list: filter by blocked/active, city, search. Includes assignment counts + block reason.' })
+  async list(@Query() q: RiderListQuery, @CurrentUser() admin: any) {
+    const filter: any = { role: 'rider' };
+    if (q.status === 'blocked') filter.isBlocked = true;
+    if (q.status === 'active') filter.isBlocked = false;
+    if (q.city) filter.city = ciEquals(q.city);
+    if (q.search) {
+      const rx = new RegExp(escapeRegex(q.search.trim()), 'i');
+      filter.$or = [{ name: rx }, { phone: rx }];
+    }
+    const page = q.page || 1;
+    const limit = q.limit || 20;
+    const [rows, total] = await Promise.all([
+      this.users.find(filter).sort({ isBlocked: -1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      this.users.countDocuments(filter),
+    ]);
+    const counts = await this.assignments.aggregate([
+      { $match: { userId: { $in: rows.map((r) => r._id) } } },
+      { $group: { _id: { u: '$userId', s: '$status' }, c: { $sum: 1 } } },
+    ]);
+    const cMap = new Map<string, any>();
+    for (const c of counts) {
+      const k = String(c._id.u);
+      const o = cMap.get(k) || { total: 0, assigned: 0, completed: 0, overdue: 0 };
+      o[c._id.s] = c.c;
+      o.total += c.c;
+      cMap.set(k, o);
+    }
+    return ok('riders_list', {
+      items: rows.map((r) => ({
+        ...publicUser(r, admin.language),
+        assignments: cMap.get(String(r._id)) || { total: 0, assigned: 0, completed: 0, overdue: 0 },
+      })),
+      page,
+      limit,
+      total,
+    });
+  }
+
+  @Post('riders')
+  @ApiOperation({ summary: 'Create rider (phone, name, city, language)' })
+  async create(@Body() dto: CreateRiderDto, @CurrentUser() admin: any) {
+    const phone = normalizeSaudiPhone(dto.phone);
+    if (!phone) throw new AppException('invalid_phone', 400);
+    if (await this.users.exists({ phone })) throw new AppException('phone_exists', 409);
+    const u = await this.users.create({ phone, name: dto.name || '', city: dto.city || null, language: dto.language || 'ar', role: 'rider' });
+    return ok('rider_created', publicUser(u.toObject(), admin.language));
+  }
+
+  @Get('riders/:id')
+  @ApiOperation({ summary: 'Rider details: profile, every assignment with progress, block history' })
+  async details(@Param('id') id: string, @CurrentUser() admin: any) {
+    const u = await this.getRider(id);
+    const as = await this.assignments.find({ userId: u._id }).sort({ dueAt: 1 }).lean();
+    const ids = as.map((a) => a.moduleId);
+    const [mods, quizzes, progs, logs] = await Promise.all([
+      this.modules.find({ _id: { $in: ids } }).lean(),
+      this.quizzes.find({ moduleId: { $in: ids } }).lean(),
+      this.progressRows.find({ userId: u._id, moduleId: { $in: ids } }).lean(),
+      this.logs.find({ userId: u._id }).sort({ createdAt: -1 }).limit(50).lean(),
+    ]);
+    const mMap = new Map<string, any>(mods.map((m) => [String(m._id), m]));
+    const qMap = new Map<string, any>(quizzes.map((q) => [String(q.moduleId), q]));
+    const pMap = new Map<string, any>(progs.map((p) => [String(p.moduleId), p]));
+    return ok('rider_details', {
+      rider: publicUser(u, admin.language),
+      assignments: as.map((a) => {
+        const k = String(a.moduleId);
+        const m = mMap.get(k);
+        return {
+          moduleId: k,
+          title: m?.title || null,
+          assignedAt: a.assignedAt,
+          dueAt: a.dueAt,
+          status: a.status,
+          completedAt: a.completedAt,
+          overdueAt: a.overdueAt,
+          progress: this.progress.buildProgressView(m, qMap.get(k), pMap.get(k), a),
+        };
+      }),
+      blockHistory: logs,
+    });
+  }
+
+  @Patch('riders/:id')
+  @ApiOperation({ summary: 'Edit rider (name, city, language, active)' })
+  async update(@Param('id') id: string, @Body() dto: UpdateRiderDto, @CurrentUser() admin: any) {
+    await this.getRider(id);
+    const u = await this.users.findByIdAndUpdate(id, { $set: dto }, { new: true }).lean();
+    return ok('rider_updated', publicUser(u, admin.language));
+  }
+
+  @Post('riders/:id/block')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Manually block a rider with a reason' })
+  async block(@Param('id') id: string, @Body() dto: BlockRiderDto, @CurrentUser() admin: any) {
+    const u = await this.getRider(id);
+    if (u.isBlocked) throw new AppException('already_blocked', 409);
+    const now = new Date();
+    const updated = await this.users
+      .findByIdAndUpdate(
+        u._id,
+        { $set: { isBlocked: true, blockedAt: now, blockedBy: String(admin._id), blockReason: { kind: 'MANUAL', note: dto.reason } } },
+        { new: true },
+      )
+      .lean();
+    await this.logs.create({ userId: u._id, action: 'BLOCK', kind: 'MANUAL', reason: dto.reason, by: String(admin._id) });
+    return ok('rider_blocked', publicUser(updated, admin.language));
+  }
+
+  @Post('riders/:id/unblock')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Unblock rider. Optional newDueAt gives overdue modules a new deadline (cron re-blocks only if that is missed).',
+  })
+  async unblock(@Param('id') id: string, @Body() dto: UnblockRiderDto, @CurrentUser() admin: any) {
+    const u = await this.getRider(id);
+    if (!u.isBlocked) throw new AppException('not_blocked', 409);
+    let newDueAt: Date | null = null;
+    if (dto.newDueAt) {
+      newDueAt = new Date(dto.newDueAt);
+      if (newDueAt.getTime() <= Date.now()) throw new AppException('due_date_invalid', 400);
+    }
+
+    const updated = await this.users
+      .findByIdAndUpdate(u._id, { $set: { isBlocked: false, blockReason: null, blockedAt: null, blockedBy: null } }, { new: true })
+      .lean();
+
+    let rescheduled = 0;
+    if (newDueAt) {
+      const r = await this.assignments.updateMany(
+        { userId: u._id, status: 'overdue' },
+        { $set: { status: 'assigned', dueAt: newDueAt, overdueAt: null } },
+      );
+      rescheduled = r.modifiedCount;
+    }
+
+    await this.logs.create({
+      userId: u._id,
+      action: 'UNBLOCK',
+      kind: u.blockReason?.kind || 'MANUAL',
+      moduleId: u.blockReason?.moduleId || null,
+      reason: u.blockReason?.kind === 'MODULE_OVERDUE' ? 'Unblocked by admin (was blocked for overdue module)' : 'Unblocked by admin',
+      note: dto.note,
+      by: String(admin._id),
+      newDueAt,
+    });
+    return ok('rider_unblocked', { rider: publicUser(updated, admin.language), rescheduledAssignments: rescheduled });
+  }
+
+  @Get('block-logs')
+  @ApiOperation({ summary: 'Block / unblock history (latest first)' })
+  @ApiQuery({ name: 'userId', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async blockLogs(@Query('userId') userId?: string, @Query('limit') limit?: string) {
+    const filter: any = userId ? { userId } : {};
+    const rows = await this.logs.find(filter).sort({ createdAt: -1 }).limit(Math.min(parseInt(limit || '100', 10) || 100, 500)).lean();
+    const users = await this.users.find({ _id: { $in: rows.map((r) => r.userId) } }).select('name phone city').lean();
+    const uMap = new Map<string, any>(users.map((u) => [String(u._id), u]));
+    return ok(
+      'block_logs',
+      rows.map((r) => ({ ...r, rider: uMap.get(String(r.userId)) || null })),
+    );
+  }
+
+  @Post('jobs/deadline-check')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'DEMO: run the auto-block deadline check now (cron also runs it every minute)' })
+  async runNow() {
+    const r: any = await this.blocking.runDeadlineCheck();
+    return ok('deadline_check_done', r, { blocked: r.blocked ?? 0 });
+  }
+}
