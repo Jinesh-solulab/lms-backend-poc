@@ -21,12 +21,13 @@
 - **Login:** Saudi mobile numbers only, **static OTP `126`** (env `STATIC_OTP`). Admin logs in with email + password.
 - **Languages:** **Arabic, English and Urdu** (`ar | en | ur`). The preference is stored on the user; API messages are returned in it. Content (`{ ar, en, ur }`) has `ur` optional: riders fall back to English (then Arabic) when it is empty (`loc()`).
 - **Storage:** videos and PDFs on **local disk** (`./uploads`), served at `/uploads/...`.
-- **Blocking:** **automatic by cron** (every minute) when the deadline passes. **Only the admin unblocks**; passing the module does NOT auto-unblock.
+- **Blocking:** **automatic by cron** (every minute) when the deadline passes. Admin can unblock any time. **Auto-unblock** (added 2026-11-12, user request): when the rider syncs and has finished the overdue module(s) of the current block period, the system unblocks (`AUTO_UNBLOCK` log); if another one is still overdue the reason moves to it (`STILL_BLOCKED` log). Manual blocks are never auto-lifted.
 - **Quiz:** pass mark set per quiz (e.g. 3 of 5). Graded on the server; the app never receives the correct answers.
 
 ## Architecture (all in `src/`, one Nest module)
 | File | Purpose |
 |---|---|
+| `main.ts` | bootstrap, Swagger, health route at `GET /` and `GET /api/health` |
 | `config.ts` | env loading (dotenv); `fileUrl()` builds absolute URLs from `BASE_URL` (stored paths are relative) |
 | `schemas/index.ts` | Collections: users, modules, quizzes, assignments, progress_events, module_progress, quiz_attempts, block_logs. `DbModel = any` (loose typing on purpose) |
 | `common/messages.ts` | ar/en/ur message dictionary, `t()`, `isLang()`, `resolveLang()` (user language, then Accept-Language, then en) |
@@ -35,7 +36,7 @@
 | `common/util.ts` | Saudi phone normalizer, `loc()`, `publicUser()`, `blockInfo()`, multer upload options |
 | `auth.controller.ts` | `/auth/*`, `/users/me*` |
 | `rider.controller.ts` | `/rider/modules`, `/rider/modules/:id/package`, `/rider/modules/:id/progress`, `/rider/sync` |
-| `progress.service.ts` | Sync logic, quiz grading, completion check, views |
+| `progress.service.ts` | Sync logic, quiz grading, completion check, auto-unblock (`autoUnblockIfDone`), views |
 | `admin-modules.controller.ts` | Module CRUD, video/PDF upload, quiz PUT, assign (by userIds/city; dueAt, dueInMinutes or deadlineDays) |
 | `admin-riders.controller.ts` | Rider list/create/details/edit, block, unblock (with optional `newDueAt`), block logs, `POST /admin/jobs/deadline-check` |
 | `blocking.service.ts` | Deadline cron: `assigned` + past `dueAt` → `overdue` + block user + log |
@@ -57,7 +58,6 @@
 ## Possible next steps (not done)
 - Worker ID + PIN login.
 - Fake Rooster stub + call log with timings (demo item 3), and webhooks (demo item 5), if the scope comes back.
-- Optional auto-unblock when a module completes.
 - Integration design diagram (LMS ↔ Rooster, LMS ↔ Bayzat) and the delivery plan doc.
 
 ## Working preferences (user)

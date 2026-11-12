@@ -46,6 +46,6 @@ export class RiderController {
   })
   async sync(@Body() dto: SyncDto, @CurrentUser() user: any) {
     const r = await this.progress.sync(user, dto.events);
-    return ok('sync_done', r, { accepted: r.accepted, duplicates: r.duplicates });
+    return ok(r.account.autoUnblocked ? 'sync_done_unblocked' : 'sync_done', r, { accepted: r.accepted, duplicates: r.duplicates });
   }
 }

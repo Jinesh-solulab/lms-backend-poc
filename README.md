@@ -11,6 +11,7 @@ npm run seed              # admin + 10 riders + "Food Safety Basics" module/quiz
 npm run start:dev         # or: npm run build && npm start
 ```
 
+- Health: `http://localhost:3000/` (or `/api/health`) returns `{ success: true, message: "HungerStation LMS server is running", data: { status, database, uptimeSeconds, ... } }`
 - Swagger: `http://localhost:3000/api/docs`
 - Postman: import `http://localhost:3000/api/docs-json`
 - Seed logins: admin `admin@hungerstation.local` / `Admin@123`; riders `0500000001` … `0500000010`, OTP `126`
@@ -62,4 +63,5 @@ Every response has the shape `{ success, message, data }`. `message` is in the u
 
 - A cron runs every minute. Any `assigned` row past its `dueAt` becomes `overdue`, and the rider is blocked with reason `MODULE_OVERDUE`. Each block is logged in `block_logs`.
 - The admin unblocks manually. An overdue row stays `overdue`, so the cron does not block the rider again. If the admin passes `newDueAt`, the row goes back to `assigned` with that date.
-- Completing the module does **not** auto-unblock the rider. The admin decides.
+- **Auto-unblock:** when a rider blocked by the cron (`MODULE_OVERDUE`) syncs and the overdue module is now complete, the system unblocks them and logs `AUTO_UNBLOCK` (by `SYSTEM`). If another module from the same block period is still overdue, the rider stays blocked, the block reason moves to that module, and `STILL_BLOCKED` is logged. Manual (admin) blocks are never auto-lifted. The sync response has `account: { isBlocked, autoUnblocked, block }`.
+- Admin sees all of this in `GET /admin/block-logs` (filters: `userId`, `action=AUTO_UNBLOCK,STILL_BLOCKED`, `by=SYSTEM`) and in `blockHistory` on `GET /admin/riders/:id`.

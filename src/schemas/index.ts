@@ -160,7 +160,9 @@ QuizAttemptSchema.index({ moduleId: 1, userId: 1 });
 export const BlockLogSchema = new Schema(
   {
     userId: { type: ObjectId, ref: M.User, required: true, index: true },
-    action: { type: String, enum: ['BLOCK', 'UNBLOCK', 'OVERDUE'], required: true },
+    // AUTO_UNBLOCK = rider finished the overdue module(s) and the system lifted the block.
+    // STILL_BLOCKED = rider finished the module that caused the block, but another module is still overdue.
+    action: { type: String, enum: ['BLOCK', 'UNBLOCK', 'OVERDUE', 'AUTO_UNBLOCK', 'STILL_BLOCKED'], required: true },
     kind: { type: String, enum: ['MODULE_OVERDUE', 'MANUAL'], default: 'MANUAL' },
     moduleId: { type: ObjectId, ref: M.TrainingModule, default: null },
     reason: String,

@@ -183,17 +183,37 @@ export class AdminRidersController {
   }
 
   @Get('block-logs')
-  @ApiOperation({ summary: 'Block / unblock history (latest first)' })
+  @ApiOperation({
+    summary: 'Block / unblock history (latest first). Actions: BLOCK, OVERDUE, UNBLOCK (admin), AUTO_UNBLOCK (rider completed), STILL_BLOCKED',
+  })
   @ApiQuery({ name: 'userId', required: false })
+  @ApiQuery({ name: 'action', required: false, description: 'Comma list, e.g. AUTO_UNBLOCK or BLOCK,UNBLOCK' })
+  @ApiQuery({ name: 'by', required: false, description: "'SYSTEM' (cron / auto-unblock) or an admin id" })
   @ApiQuery({ name: 'limit', required: false })
-  async blockLogs(@Query('userId') userId?: string, @Query('limit') limit?: string) {
-    const filter: any = userId ? { userId } : {};
+  async blockLogs(
+    @Query('userId') userId?: string,
+    @Query('action') action?: string,
+    @Query('by') by?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const filter: any = {};
+    if (userId) filter.userId = userId;
+    if (action) filter.action = { $in: action.split(',').map((a) => a.trim().toUpperCase()).filter(Boolean) };
+    if (by) filter.by = by;
     const rows = await this.logs.find(filter).sort({ createdAt: -1 }).limit(Math.min(parseInt(limit || '100', 10) || 100, 500)).lean();
-    const users = await this.users.find({ _id: { $in: rows.map((r) => r.userId) } }).select('name phone city').lean();
+    const [users, mods] = await Promise.all([
+      this.users.find({ _id: { $in: rows.map((r) => r.userId) } }).select('name phone city').lean(),
+      this.modules.find({ _id: { $in: rows.map((r) => r.moduleId).filter(Boolean) } }).select('title').lean(),
+    ]);
     const uMap = new Map<string, any>(users.map((u) => [String(u._id), u]));
+    const mMap = new Map<string, any>(mods.map((m) => [String(m._id), m.title]));
     return ok(
       'block_logs',
-      rows.map((r) => ({ ...r, rider: uMap.get(String(r.userId)) || null })),
+      rows.map((r) => ({
+        ...r,
+        rider: uMap.get(String(r.userId)) || null,
+        moduleTitle: r.moduleId ? mMap.get(String(r.moduleId)) || null : null,
+      })),
     );
   }
 

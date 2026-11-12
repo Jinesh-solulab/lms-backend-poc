@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Lang } from './common/messages';
-import { fileView, loc } from './common/util';
+import { blockInfo, fileView, loc } from './common/util';
 import { SyncEventDto } from './dto';
 import { DbModel, M } from './schemas';
 import { fileUrl } from './config';
@@ -18,6 +18,8 @@ export class ProgressService {
     @InjectModel(M.ProgressEvent) private events: DbModel,
     @InjectModel(M.ModuleProgress) private progress: DbModel,
     @InjectModel(M.QuizAttempt) private attempts: DbModel,
+    @InjectModel(M.User) private users: DbModel,
+    @InjectModel(M.BlockLog) private logs: DbModel,
   ) {}
 
   /* ---------------- views ---------------- */
@@ -250,7 +252,80 @@ export class ProgressService {
       progress.push(await this.evaluateCompletion(user._id, mid, cache));
     }
 
-    return { accepted, duplicates, rejected, results, quizResults, progress };
+    // Auto-unblock: a rider blocked by the deadline cron is unblocked once the overdue training is done.
+    let autoUnblock: any = null;
+    if (user.isBlocked && progress.some((p) => p.assignmentStatus === 'completed')) {
+      autoUnblock = await this.autoUnblockIfDone(user._id);
+    }
+    const fresh = autoUnblock ? await this.users.findById(user._id).lean() : user;
+    const account = {
+      isBlocked: !!fresh?.isBlocked,
+      autoUnblocked: autoUnblock?.action === 'AUTO_UNBLOCK',
+      block: blockInfo(fresh, user.language),
+    };
+
+    return { accepted, duplicates, rejected, results, quizResults, progress, account };
+  }
+
+  /**
+   * Lifts a MODULE_OVERDUE block once the rider has no overdue module left from the current block period.
+   * - Manual (admin) blocks are never touched.
+   * - "Current block period" = assignments that went overdue at/after blockedAt. Older overdue rows were already
+   *   forgiven by an admin unblock (they stay 'overdue' on purpose), so they do not keep the rider blocked.
+   * - If the module that caused the block is done but another one is still overdue, the rider stays blocked and
+   *   the block reason moves to that module (logged as STILL_BLOCKED).
+   * Returns the log entry written, or null when nothing changed.
+   */
+  async autoUnblockIfDone(userId: Types.ObjectId) {
+    const u = await this.users.findById(userId).lean();
+    if (!u?.isBlocked || u.blockReason?.kind !== 'MODULE_OVERDUE') return null;
+
+    const causeId = String(u.blockReason.moduleId || '');
+    const pending = await this.assignments
+      .find({ userId, status: 'overdue', overdueAt: { $gte: u.blockedAt || new Date(0) } })
+      .sort({ dueAt: 1 })
+      .lean();
+    if (pending.some((a) => String(a.moduleId) === causeId)) return null; // the blocking module is still not done
+
+    const causeTitle = u.blockReason.moduleTitle || {};
+    const causeName = causeTitle.en || causeTitle.ar || causeId;
+    const guard = { _id: userId, isBlocked: true, 'blockReason.kind': 'MODULE_OVERDUE', 'blockReason.moduleId': u.blockReason.moduleId };
+
+    if (pending.length) {
+      const next = pending[0];
+      const title = (await this.modules.findById(next.moduleId).select('title').lean())?.title || { ar: '', en: '', ur: '' };
+      const r = await this.users.updateOne(guard, {
+        $set: { blockReason: { kind: 'MODULE_OVERDUE', moduleId: next.moduleId, moduleTitle: title, dueAt: next.dueAt } },
+      });
+      if (!r.modifiedCount) return null;
+      return (
+        await this.logs.create({
+          userId,
+          action: 'STILL_BLOCKED',
+          kind: 'MODULE_OVERDUE',
+          moduleId: next.moduleId,
+          reason: `Completed "${causeName}", but "${title.en || title.ar}" is still overdue (${pending.length} overdue module(s) left)`,
+          by: 'SYSTEM',
+          dueAt: next.dueAt,
+        })
+      ).toObject();
+    }
+
+    const r = await this.users.updateOne(guard, { $set: { isBlocked: false, blockReason: null, blockedAt: null, blockedBy: null } });
+    if (!r.modifiedCount) return null; // admin unblocked / changed it at the same moment
+    const blockedForMs = u.blockedAt ? Date.now() - new Date(u.blockedAt).getTime() : null;
+    return (
+      await this.logs.create({
+        userId,
+        action: 'AUTO_UNBLOCK',
+        kind: 'MODULE_OVERDUE',
+        moduleId: u.blockReason.moduleId,
+        reason: `Auto-unblocked: rider completed overdue module "${causeName}"` +
+          (blockedForMs != null ? ` (was blocked ${Math.round(blockedForMs / 60000)} min)` : ''),
+        by: 'SYSTEM',
+        dueAt: u.blockReason.dueAt,
+      })
+    ).toObject();
   }
 
   private async apply(userId: Types.ObjectId, doc: any, cache: Map<string, Ctx>) {

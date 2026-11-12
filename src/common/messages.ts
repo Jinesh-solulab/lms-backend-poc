@@ -56,6 +56,8 @@ const en: Record<string, string> = {
   blocked_overdue_reason:
     'You are blocked because "{title}" was not completed before the deadline. Please contact your supervisor.',
   blocked_manual_reason: 'You are blocked by admin: {note}',
+  server_running: 'HungerStation LMS server is running',
+  sync_done_unblocked: 'Synced: {accepted} new, {duplicates} already received. Training complete, your account is unblocked.',
 };
 
 const ar: Record<string, string> = {
@@ -111,6 +113,8 @@ const ar: Record<string, string> = {
   deadline_check_done: 'تم فحص المواعيد: تم حظر {blocked} مندوب',
   blocked_overdue_reason: 'تم حظرك لعدم إكمال "{title}" قبل الموعد النهائي. يرجى التواصل مع المشرف.',
   blocked_manual_reason: 'تم حظرك من قبل الإدارة: {note}',
+  server_running: 'خادم نظام التدريب لهنقرستيشن يعمل',
+  sync_done_unblocked: 'تمت المزامنة: {accepted} جديد، {duplicates} مستلم مسبقًا. اكتمل التدريب وتم رفع الحظر عن حسابك.',
 };
 
 const ur: Record<string, string> = {
@@ -167,6 +171,8 @@ const ur: Record<string, string> = {
   blocked_overdue_reason:
     'آپ کو بلاک کر دیا گیا ہے کیونکہ "{title}" آخری تاریخ سے پہلے مکمل نہیں ہوا۔ براہ کرم اپنے سپروائزر سے رابطہ کریں۔',
   blocked_manual_reason: 'آپ کو ایڈمن نے بلاک کیا ہے: {note}',
+  server_running: 'ہنگر اسٹیشن LMS سرور چل رہا ہے',
+  sync_done_unblocked: 'ہم آہنگی مکمل: {accepted} نئے، {duplicates} پہلے سے موصول۔ تربیت مکمل، آپ کا اکاؤنٹ ان بلاک ہو گیا ہے۔',
 };
 
 const dict: Record<Lang, Record<string, string>> = { en, ar, ur };
