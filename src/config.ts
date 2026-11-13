@@ -19,7 +19,7 @@ export const config = {
   baseUrl: (process.env.BASE_URL || `http://localhost:${port}`).replace(/\/$/, ''),
   adminEmail: (process.env.ADMIN_EMAIL || 'admin@hs-demo.com').toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || 'Admin@123',
-  maxVideoMb: parseInt(process.env.MAX_VIDEO_MB || '500', 10),
+  maxVideoMb: parseInt(process.env.MAX_VIDEO_MB || '100', 10), // files live in MongoDB GridFS (Atlas free tier = 512 MB total)
   maxPdfMb: parseInt(process.env.MAX_PDF_MB || '50', 10),
   deadlineCronEnabled: process.env.DEADLINE_CRON_ENABLED !== 'false',
 };

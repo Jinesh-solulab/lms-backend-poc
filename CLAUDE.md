@@ -20,7 +20,7 @@
 - **Stack:** NestJS 10 + MongoDB (Mongoose 8) only.
 - **Login:** Saudi mobile numbers only, **static OTP `123456`** (env `STATIC_OTP`). Admin logs in with email + password.
 - **Languages:** **Arabic, English and Urdu** (`ar | en | ur`). The preference is stored on the user; API messages are returned in it. Content (`{ ar, en, ur }`) has `ur` optional: riders fall back to English (then Arabic) when it is empty (`loc()`).
-- **Storage:** videos and PDFs on **local disk** (`./uploads`), served at `/uploads/...`.
+- **Storage:** videos, PDFs and avatars in **MongoDB GridFS** (bucket `uploads`, changed 2026-11-13 because Render wipes its disk on every deploy). GridFS filename = public path `/uploads/videos/<objectId>.mp4`; streamed at `/uploads/...` with Range/ETag (`common/storage.ts`). Multer writes a temp file first. Files not in GridFS fall back to `UPLOAD_DIR` on disk. MAX_VIDEO_MB default 100 (Atlas free tier = 512 MB total).
 - **Blocking:** **automatic by cron** (every minute) when the deadline passes. Admin can unblock any time. **Auto-unblock** (added 2026-11-12, user request): when the rider syncs and has finished the overdue module(s) of the current block period, the system unblocks (`AUTO_UNBLOCK` log); if another one is still overdue the reason moves to it (`STILL_BLOCKED` log). Manual blocks are never auto-lifted.
 - **Quiz:** pass mark set per quiz (e.g. 3 of 5). Graded on the server; the app never receives the correct answers.
 
@@ -33,8 +33,9 @@
 | `common/messages.ts` | ar/en/ur message dictionary, `t()`, `isLang()`, `resolveLang()` (user language, then Accept-Language, then en) |
 | `common/http.ts` | `AppException(key)`, `ok(key, data)`, response interceptor and exception filter that localize messages |
 | `common/auth.ts` | `JwtAuthGuard` (reloads the user every request), `@Auth('admin' \| 'rider')`, `@CurrentUser()` |
+| `common/storage.ts` | GridFS: `putFile`, `deleteFile`, `serveFile` (GET/HEAD `/uploads/*`, Range, 304), `FileStorage` provider (`save`/`remove`/`discard`) |
 | `common/util.ts` | Saudi phone normalizer, `loc()`, `publicUser()`, `blockInfo()`, multer upload options |
-| `auth.controller.ts` | `/auth/*`, `/users/me*` (incl. `POST/DELETE /users/me/avatar`: jpg/png/webp ≤ 5 MB in `uploads/avatars`; `publicUser` returns `avatarUrl`) |
+| `auth.controller.ts` | `/auth/*`, `/users/me*` (incl. `POST/DELETE /users/me/avatar`: jpg/png/webp ≤ 5 MB, GridFS `/uploads/avatars/...`; `publicUser` returns `avatarUrl`) |
 | `rider.controller.ts` | `/rider/modules` (`hasDownload` = has video or PDF), `/rider/modules/:id/package`, `/rider/modules/:id/progress`, `/rider/modules/:id/attempts` (quiz history, newest first, isBest/isLatest), `/rider/sync` |
 | `rules.service.ts` | Assignment rules: `applyRule`, `applyForRider` (hook), `preview`, 5-min sweep cron |
 | `rules.controller.ts` | `/admin/rules*` CRUD + preview + apply; `MetaController` `/meta/cities|worker-types|zones` (public) |

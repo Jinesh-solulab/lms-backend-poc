@@ -11,6 +11,7 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { AllExceptionsFilter, ResponseInterceptor } from './common/http';
 import { resolveLang, t } from './common/messages';
+import { serveFile } from './common/storage';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -20,13 +21,14 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // POC: videos/PDFs on local disk, served at /uploads/... (express static supports Range for video seeking)
+  // Files (videos, PDFs, avatars) are stored in MongoDB GridFS and streamed at /uploads/... with Range support.
+  // Files not in GridFS fall through to the old local folder (UPLOAD_DIR), so earlier local uploads still open.
+  const conn = app.get<Connection>(getConnectionToken());
+  app.use('/uploads', serveFile(() => conn.db as any));
   const uploadRoot = path.resolve(config.uploadDir);
-  for (const sub of ['videos', 'pdfs']) fs.mkdirSync(path.join(uploadRoot, sub), { recursive: true });
-  app.useStaticAssets(uploadRoot, { prefix: '/uploads', maxAge: '7d' });
+  if (fs.existsSync(uploadRoot)) app.useStaticAssets(uploadRoot, { prefix: '/uploads', maxAge: '7d' });
 
   // Health / "server is up": GET / and GET /api/health
-  const conn = app.get<Connection>(getConnectionToken());
   const startedAt = new Date();
   const dbStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   const health = (req: any, res: any) => {

@@ -7,6 +7,7 @@ import { AdminRidersController } from './admin-riders.controller';
 import { AuthController, MeController } from './auth.controller';
 import { BlockingService } from './blocking.service';
 import { JwtAuthGuard } from './common/auth';
+import { FileStorage } from './common/storage';
 import { config } from './config';
 import { DashboardController } from './dashboard.controller';
 import { ProgressService } from './progress.service';
@@ -24,6 +25,6 @@ import { ALL_SCHEMAS } from './schemas';
     ScheduleModule.forRoot(),
   ],
   controllers: [AuthController, MeController, RiderController, AdminModulesController, AdminRidersController, DashboardController, RulesController, MetaController, RoosterController],
-  providers: [JwtAuthGuard, ProgressService, BlockingService, RulesService],
+  providers: [JwtAuthGuard, ProgressService, BlockingService, RulesService, FileStorage],
 })
 export class AppModule {}

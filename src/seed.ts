@@ -10,14 +10,15 @@
  *    with matching module_progress, quiz_attempts and block_logs, so the trend chart, compliance card,
  *    module stats and Rooster screen all have data.
  *  - Riders 1-10 have a fresh "Food Safety Basics" (due in 7 days, no progress) for the live offline demo.
- *  - Videos / PDFs: put files in ./seed-assets (food-safety.mp4|pdf, road-safety.mp4|pdf). They are copied
- *    into UPLOAD_DIR and attached when the module has none. Missing files are skipped (upload via the admin panel).
+ *  - Videos / PDFs: put files in ./seed-assets (food-safety.mp4|pdf, road-safety.mp4|pdf). They are uploaded
+ *    into MongoDB GridFS and attached when the module has none. Missing files are skipped (upload via the admin panel).
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as bcrypt from 'bcryptjs';
 import mongoose, { Types } from 'mongoose';
 import { config, safeMongoUri } from './config';
+import { putFile } from './common/storage';
 import {
   AssignmentRuleSchema,
   AssignmentSchema,
@@ -201,17 +202,15 @@ type Outcome =
 
 const MIME: Record<string, string> = { '.mp4': 'video/mp4', '.pdf': 'application/pdf' };
 
-/** Copy seed-assets/<key>.<ext> into UPLOAD_DIR and return the module file object, or null when missing. */
-function seedFile(key: string, kind: 'video' | 'pdf') {
+/** Upload seed-assets/<key>.<ext> into GridFS and return the module file object, or null when missing. */
+async function seedFile(key: string, kind: 'video' | 'pdf') {
   const ext = kind === 'video' ? '.mp4' : '.pdf';
   const src = path.resolve('seed-assets', key + ext);
   if (!fs.existsSync(src)) return null;
   const sub = kind === 'video' ? 'videos' : 'pdfs';
-  const name = `${new Types.ObjectId().toHexString()}${ext}`;
-  const dir = path.resolve(config.uploadDir, sub);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.copyFileSync(src, path.join(dir, name));
-  return { path: `/uploads/${sub}/${name}`, originalName: key + ext, sizeBytes: fs.statSync(src).size, mimeType: MIME[ext], uploadedAt: new Date() };
+  const rel = `/uploads/${sub}/${new Types.ObjectId().toHexString()}${ext}`;
+  await putFile(mongoose.connection.db as any, src, rel, MIME[ext], key + ext, false);
+  return { path: rel, originalName: key + ext, sizeBytes: fs.statSync(src).size, mimeType: MIME[ext], uploadedAt: new Date() };
 }
 
 async function main() {
@@ -305,7 +304,7 @@ async function main() {
     const set: any = {};
     for (const kind of ['video', 'pdf'] as const) {
       if (mod[kind]?.path) continue;
-      const f = seedFile(def.key, kind);
+      const f = await seedFile(def.key, kind);
       if (f) set[kind] = f;
       else console.log(`  no ${kind}: add seed-assets/${def.key}.${kind === 'video' ? 'mp4' : 'pdf'} or upload in the admin panel`);
     }

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { Types } from 'mongoose';
 import { diskStorage } from 'multer';
@@ -90,15 +91,16 @@ const AVATAR_MAX_MB = 5;
 export type UploadKind = 'video' | 'pdf' | 'avatar';
 const SUBDIR: Record<UploadKind, string> = { video: 'videos', pdf: 'pdfs', avatar: 'avatars' };
 
-/** Local disk storage for the POC: ./uploads/videos, ./uploads/pdfs, ./uploads/avatars, served at /uploads/... */
+/** Temp folder for incoming uploads; the controller then streams the file into GridFS (see common/storage.ts). */
+const UPLOAD_TMP = path.join(os.tmpdir(), 'hs-lms-uploads');
+
+/** Multer options: validates type + size and writes to a temp file. Stored permanently in GridFS, served at /uploads/... */
 export function uploadOptions(kind: UploadKind): MulterOptions {
-  const sub = SUBDIR[kind];
   return {
     storage: diskStorage({
       destination: (_req, _file, cb) => {
-        const dir = path.join(config.uploadDir, sub);
-        fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
+        fs.mkdirSync(UPLOAD_TMP, { recursive: true });
+        cb(null, UPLOAD_TMP);
       },
       filename: (_req, file, cb) => cb(null, `${new Types.ObjectId().toHexString()}${path.extname(file.originalname).toLowerCase()}`),
     }),
@@ -117,9 +119,5 @@ export function uploadOptions(kind: UploadKind): MulterOptions {
   };
 }
 
+/** Public relative path of an upload, also its GridFS filename: /uploads/videos/<objectId>.mp4 */
 export const uploadRelPath = (kind: UploadKind, filename: string) => `/uploads/${SUBDIR[kind]}/${filename}`;
-
-export function removeUpload(relPath?: string | null) {
-  if (!relPath || !relPath.startsWith('/uploads/')) return;
-  fs.unlink(path.join(config.uploadDir, relPath.replace('/uploads/', '')), () => undefined);
-}

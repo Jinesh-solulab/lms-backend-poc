@@ -1,6 +1,6 @@
 # Seed assets
 
-Optional demo files. `npm run seed` / `npm run seed:reset -- --yes` copies them into `UPLOAD_DIR` and attaches them to the module when the module has no video / PDF yet.
+Optional demo files. `npm run seed` / `npm run seed:reset -- --yes` uploads them into MongoDB GridFS and attaches them to the module when the module has no video / PDF yet.
 
 | File | Module |
 |---|---|

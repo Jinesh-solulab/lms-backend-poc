@@ -1,6 +1,6 @@
 # HungerStation LMS – POC Backend
 
-NestJS + MongoDB. No Redis, no queue. Videos and PDFs are stored on local disk (`./uploads`).
+NestJS + MongoDB. No Redis, no queue. Videos, PDFs and profile photos are stored in MongoDB GridFS (bucket `uploads`), so they survive restarts and redeploys. They are served at `/uploads/...` with HTTP Range support.
 
 ## Run
 

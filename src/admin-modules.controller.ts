@@ -5,7 +5,8 @@ import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Model, Types } from 'mongoose';
 import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
-import { removeUpload, uploadOptions, uploadRelPath } from './common/util';
+import { FileStorage } from './common/storage';
+import { uploadOptions, uploadRelPath } from './common/util';
 import { riderFilter } from './common/meta';
 import { AssignModuleDto, CreateModuleDto, SaveQuizDto, UpdateModuleDto } from './dto';
 import { ProgressService } from './progress.service';
@@ -19,6 +20,7 @@ const FILE_BODY = { schema: { type: 'object', properties: { file: { type: 'strin
 export class AdminModulesController {
   constructor(
     private progress: ProgressService,
+    private files: FileStorage,
     @InjectModel(M.TrainingModule) private modules: DbModel,
     @InjectModel(M.Quiz) private quizzes: DbModel,
     @InjectModel(M.Assignment) private assignments: DbModel,
@@ -92,7 +94,7 @@ export class AdminModulesController {
   @Post(':id/video')
   @ApiConsumes('multipart/form-data')
   @ApiBody(FILE_BODY)
-  @ApiOperation({ summary: 'Upload / replace module video (form field "file"). Stored on local disk for the POC.' })
+  @ApiOperation({ summary: 'Upload / replace module video (form field "file"). Stored in MongoDB GridFS, served at /uploads/... with Range support.' })
   @UseInterceptors(FileInterceptor('file', uploadOptions('video')))
   async uploadVideo(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
     return this.saveFile(id, 'video', file);
@@ -112,9 +114,10 @@ export class AdminModulesController {
     const rel = uploadRelPath(kind, file.filename);
     const m = Types.ObjectId.isValid(id) ? await this.modules.findById(id).lean() : null;
     if (!m) {
-      removeUpload(rel);
+      this.files.discard(file);
       throw new AppException('module_not_found', 404);
     }
+    await this.files.save(file, rel); // into MongoDB GridFS, survives redeploys
     const updated = await this.modules
       .findByIdAndUpdate(
         id,
@@ -127,7 +130,7 @@ export class AdminModulesController {
         { new: true },
       )
       .lean();
-    removeUpload(m[kind]?.path); // delete the replaced file
+    await this.files.remove(m[kind]?.path); // delete the replaced file
     const q = await this.quizzes.findOne({ moduleId: updated._id }).lean();
     return ok(kind === 'video' ? 'video_uploaded' : 'pdf_uploaded', this.progress.adminModuleView(updated, q));
   }

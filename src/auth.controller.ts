@@ -10,7 +10,8 @@ import { Auth, CurrentUser } from './common/auth';
 import { AppException, ok } from './common/http';
 import { resolveLang } from './common/messages';
 import { canonicalCity } from './common/meta';
-import { normalizeSaudiPhone, publicUser, removeUpload, uploadOptions, uploadRelPath } from './common/util';
+import { FileStorage } from './common/storage';
+import { normalizeSaudiPhone, publicUser, uploadOptions, uploadRelPath } from './common/util';
 import { RulesService } from './rules.service';
 import { AdminLoginDto, SendOtpDto, UpdateLanguageDto, UpdateProfileDto, VerifyOtpDto } from './dto';
 import { DbModel, M } from './schemas';
@@ -84,6 +85,7 @@ export class AuthController {
 export class MeController {
   constructor(
     private rules: RulesService,
+    private files: FileStorage,
     @InjectModel(M.User) private users: DbModel,
   ) {}
 
@@ -126,15 +128,17 @@ export class MeController {
   @UseInterceptors(FileInterceptor('file', uploadOptions('avatar')))
   async uploadAvatar(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: any) {
     if (!file) throw new AppException('file_required', 400);
+    const rel = uploadRelPath('avatar', file.filename);
+    await this.files.save(file, rel);
     const avatar = {
-      path: uploadRelPath('avatar', file.filename),
+      path: rel,
       originalName: file.originalname,
       sizeBytes: file.size,
       mimeType: file.mimetype,
       uploadedAt: new Date(),
     };
     const updated = await this.users.findByIdAndUpdate(user._id, { $set: { avatar } }, { new: true }).lean();
-    removeUpload(user.avatar?.path); // old photo
+    await this.files.remove(user.avatar?.path); // old photo
     return ok('avatar_updated', publicUser(updated, user.language));
   }
 
@@ -142,7 +146,7 @@ export class MeController {
   @ApiOperation({ summary: 'Remove my profile photo (avatarUrl becomes null)' })
   async removeAvatar(@CurrentUser() user: any) {
     const updated = await this.users.findByIdAndUpdate(user._id, { $set: { avatar: null } }, { new: true }).lean();
-    removeUpload(user.avatar?.path);
+    await this.files.remove(user.avatar?.path);
     return ok('avatar_removed', publicUser(updated, user.language));
   }
 }
