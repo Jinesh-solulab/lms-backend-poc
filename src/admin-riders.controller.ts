@@ -126,6 +126,14 @@ export class AdminRidersController {
     });
   }
 
+  @Get('riders/:id/modules/:moduleId/attempts')
+  @ApiOperation({ summary: 'All quiz attempts of a rider on one module (newest first), with best / last score and isBest / isLatest flags' })
+  async attempts(@Param('id') id: string, @Param('moduleId') moduleId: string) {
+    const u = await this.getRider(id);
+    if (!(await this.assignments.exists({ userId: u._id, moduleId }))) throw new AppException('not_assigned', 404);
+    return ok('quiz_attempts', await this.progress.attemptHistory(u._id, moduleId));
+  }
+
   @Patch('riders/:id')
   @ApiOperation({ summary: 'Edit rider (name, city, workerType, zone, language, active). City / type / zone change re-runs assignment rules.' })
   async update(@Param('id') id: string, @Body() dto: UpdateRiderDto, @CurrentUser() admin: any) {

@@ -36,6 +36,17 @@ export class RiderController {
     return ok('progress', r.data);
   }
 
+  @Get('modules/:id/attempts')
+  @ApiOperation({
+    summary: 'My quiz attempts on one module (newest first) with best and last score',
+    description: 'Show the certificate with bestScore (highest), not lastScore. Each item has isBest / isLatest flags.',
+  })
+  async attempts(@Param('id') id: string, @CurrentUser() user: any) {
+    const r = await this.progress.moduleProgress(user, id);
+    if ('error' in r) throw new AppException(r.error, r.error === 'not_assigned' ? 403 : 404);
+    return ok('quiz_attempts', await this.progress.attemptHistory(user._id, id));
+  }
+
   @Post('sync')
   @HttpCode(200)
   @ApiOperation({

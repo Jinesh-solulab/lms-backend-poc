@@ -63,8 +63,50 @@ export class ProgressService {
       partsTotal: steps.length,
       completed: !!p.completed,
       completedAt: p.completedAt || null,
+      // Certificate data (only when complete). Score = the rider's HIGHEST quiz score, not the last one.
+      certificate: p.completed
+        ? {
+            issuedAt: p.completedAt || null,
+            score: quizTotal ? (p.bestScore ?? null) : null,
+            total: quizTotal || null,
+            scorePercent: asPct(p.bestScore),
+            quizAttempts: p.quizAttempts ?? 0,
+          }
+        : null,
       assignmentStatus: a?.status || null,
       dueAt: a?.dueAt || null,
+    };
+  }
+
+  /**
+   * Every quiz attempt of one rider on one module, newest first.
+   * attemptNumber counts in the order the rider took them (phone time), so offline attempts synced later still line up.
+   * isBest marks the first attempt that reached the highest score; isLatest marks the most recent one.
+   */
+  async attemptHistory(userId: any, moduleId: string) {
+    const [quiz, rows] = await Promise.all([
+      this.quizzes.findOne({ moduleId }).lean(),
+      this.attempts.find({ userId, moduleId }).sort({ attemptedAt: 1, createdAt: 1 }).lean(),
+    ]);
+    const best = rows.reduce((mx: number, r: any) => Math.max(mx, r.score ?? 0), rows.length ? 0 : -1);
+    const bestIdx = rows.findIndex((r: any) => (r.score ?? 0) === best);
+    const items = rows.map((r: any, i: number) => {
+      const { duplicate, ...view } = this.quizResultView(r, false);
+      return { attemptNumber: i + 1, ...view, isBest: i === bestIdx, isLatest: i === rows.length - 1 };
+    });
+    const pct = (s: number | null) => (s != null && quiz?.questions?.length ? Math.round((s / quiz.questions.length) * 100) : null);
+    const last = rows[rows.length - 1];
+    return {
+      moduleId: String(moduleId),
+      totalQuestions: quiz?.questions?.length ?? 0,
+      passMark: quiz?.passMark ?? null,
+      attempts: rows.length,
+      bestScore: rows.length ? best : null,
+      bestScorePercent: rows.length ? pct(best) : null,
+      lastScore: last ? last.score : null,
+      lastScorePercent: last ? pct(last.score) : null,
+      passed: rows.some((r: any) => r.passed),
+      items: items.reverse(),
     };
   }
 
@@ -113,6 +155,8 @@ export class ProgressService {
           hasVideo: !!m.video?.path,
           hasPdf: !!m.pdf?.path,
           hasQuiz: !!q?.questions?.length,
+          // false = no video and no PDF: the app should hide the "Download" button (a quiz-only package is just JSON)
+          hasDownload: !!(m.video?.path || m.pdf?.path),
           downloadSizeBytes: (m.video?.sizeBytes || 0) + (m.pdf?.sizeBytes || 0),
           progress: this.buildProgressView(m, q, pMap.get(id), a),
         };
@@ -153,6 +197,7 @@ export class ProgressService {
               })),
             }
           : null,
+        hasDownload: !!(m.video?.path || m.pdf?.path),
         totalSizeBytes: (m.video?.sizeBytes || 0) + (m.pdf?.sizeBytes || 0),
       },
     };
