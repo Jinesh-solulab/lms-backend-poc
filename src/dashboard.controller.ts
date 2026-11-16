@@ -70,7 +70,8 @@ export class DashboardController {
     @InjectModel(M.Quiz) private quizzes: DbModel,
     @InjectModel(M.Assignment) private assignments: DbModel,
     @InjectModel(M.ModuleProgress) private progressRows: DbModel,
-  ) {}
+  ) { }
+
 
   /* ---------------- shared filters ---------------- */
 
@@ -387,17 +388,17 @@ export class DashboardController {
       pdfViewed: p.pdfViewed || 0,
       quiz: quiz
         ? {
-            totalQuestions: quiz.questions.length,
-            passMark: quiz.passMark,
-            attempted: p.quizAttempted || 0,
-            passed: p.quizPassed || 0,
-            failed: (p.quizAttempted || 0) - (p.quizPassed || 0),
-            totalAttempts: p.totalAttempts || 0,
-            avgBestScore: p.avgBestScore != null ? Math.round(p.avgBestScore * 10) / 10 : null,
-            avgBestScorePercent:
-              p.avgBestScore != null && quiz.questions.length ? Math.round((p.avgBestScore / quiz.questions.length) * 1000) / 10 : null,
-            passRate: pct(p.quizPassed || 0, p.quizAttempted || 0),
-          }
+          totalQuestions: quiz.questions.length,
+          passMark: quiz.passMark,
+          attempted: p.quizAttempted || 0,
+          passed: p.quizPassed || 0,
+          failed: (p.quizAttempted || 0) - (p.quizPassed || 0),
+          totalAttempts: p.totalAttempts || 0,
+          avgBestScore: p.avgBestScore != null ? Math.round(p.avgBestScore * 10) / 10 : null,
+          avgBestScorePercent:
+            p.avgBestScore != null && quiz.questions.length ? Math.round((p.avgBestScore / quiz.questions.length) * 1000) / 10 : null,
+          passRate: pct(p.quizPassed || 0, p.quizAttempted || 0),
+        }
         : null,
     });
   }
