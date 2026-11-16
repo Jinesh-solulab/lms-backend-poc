@@ -20,7 +20,8 @@ export class BlockingService {
     @InjectModel(M.TrainingModule) private modules: DbModel,
     @InjectModel(M.User) private users: DbModel,
     @InjectModel(M.BlockLog) private logs: DbModel,
-  ) {}
+  ) { }
+
 
   @Cron(CronExpression.EVERY_MINUTE)
   async cron() {
